@@ -151,17 +151,10 @@ before touching mask/skin code.
     `square` added as third registry shape (generator corner≈0 variant).
 11. ✅ QA'd (2026-07-18): **square-shape glow** — proc halo traces the square. The
     differentiator is verified on two shapes; the engine is genuinely shape-generic.
-12. **Shaped cast/channel overlay** — two components (the owner's QA):
-    - ✅ QA'd (2026-07-18): the **drain** (`CastFill`) follows the shape (fresh mask
-      after removing Blizzard's `FillMask` — the already-masked case works).
-    - ❌→✅ Built (QA pending): the **inner glow** stayed rounded-square — runtime
-      mask attach silently failed (never-rendered never-masked; refined rule in
-      API-NOTES §2). Fix: art REPLACEMENT via `PlaySpellCastAnim` post-hook — our
-      `<shape>-ring` art, lime tint for channels / gold for casts, re-asserted every
-      cast. QA: channel again — inner glow shaped now?
-    - ✅ Built (QA pending): **`EndBurst` cast-end flash** (the owner confirmed square) —
-      already-masked case: Blizzard's `EndMask` removed from the expanding
-      `GlowRing`, fresh shaped mask attached; template-only setup, no hooks needed.
+12. ✅ **Shaped cast/channel overlay — FULLY QA'd (2026-07-18, on round AND square):**
+    drain (`CastFill`, mask swap), inner glow (art replacement via
+    `PlaySpellCastAnim` hook, lime/gold, `RING_FIT` sizing so the rim lands on the
+    icon edge), and `EndBurst` end flash (mask swap). All three follow the shape.
 13. Next build steps: decoration layers (the north star), text controls, Config UI.
 10. ✅ QA'd (2026-07-18): `/gb shape roundrect` + /reload → all 8 bars rounded-rects.
     The shape registry is proven end-to-end.
