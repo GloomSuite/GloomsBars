@@ -149,8 +149,15 @@ before touching mask/skin code.
     proc → shaped pulsing gold halo following the round icon (screenshot). The owner:
     "hard to see" → glow intensity/visibility controls = Config backlog priority.
     `square` added as third registry shape (generator corner≈0 variant).
-11. Next build steps: shaped cast/channel overlay frames (`SpellCastAnimFrame`),
-    decoration layers (the north star), text controls, Config UI.
+11. ✅ QA'd (2026-07-18): **square-shape glow** — proc halo traces the square. The
+    differentiator is verified on two shapes; the engine is genuinely shape-generic.
+12. ✅ Built (QA pending): **shaped cast/channel fill** — `SpellCastAnimFrame.Fill`:
+    removed Blizzard's rounded-square `FillMask` from `CastFill`, fresh per-texture
+    shape masks on `CastFill` + `InnerGlowTexture` (Blizzard swaps their atlases per
+    cast type — channel=green — but never touches masks). QA: channel an ability —
+    does the draining fill match the icon shape? (`EndBurst` still unshaped — check
+    whether the cast-end flash reads square; fix later if noticed.)
+13. Next build steps: decoration layers (the north star), text controls, Config UI.
 10. ✅ QA'd (2026-07-18): `/gb shape roundrect` + /reload → all 8 bars rounded-rects.
     The shape registry is proven end-to-end.
 
