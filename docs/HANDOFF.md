@@ -1,22 +1,22 @@
 # Gloom's Bars — Session Handoff
-**Last updated: end of session 5 (2026-07-19). Base commit: `edb4ef0` (session 4). ALL session-5 work is
-UNCOMMITTED in the working tree — 4 modified files (`Core.lua` `Skin.lua` `Config.lua`
-`tools/generate-art.py`) + 4 new hexagon art PNGs (`Media/{masks,art}/hexagon*`). Offer the owner a commit.
-Git history holds the older narrative; this file is the current-state snapshot. ⇒ Read SESSION 5 first
-(hexagon + border + the construction rework, and where per-corner mixing was CUT), then SESSION 4/3/2.**
+**Last updated: end of session 6 (2026-07-19). Base commit: `829a96f` (session 5, committed). ALL
+session-6 work is UNCOMMITTED — 5 modified files (`Core.lua` `Skin.lua` `Glows.lua` `Config.lua`
+`tools/generate-art.py`), ~100 regenerated `Media/art/*-glow.png`, + NEW `tools/generate-modglyphs.py`
+and `Media/ui/{cmd,shift,ctrl,opt}.png`. Offer the owner a commit. Git history holds the older narrative;
+this file is the current-state snapshot. ⇒ Read SESSION 6 first (the big Config-wiring + proc-glow +
+continuous-OFF session), then SESSION 5 (hexagon/border/construction), then 4/3/2.**
 
-## ▶ FIRST THING NEXT SESSION: QA the CONTINUOUS-SHAPE TOGGLE (built, NOT yet verified in-game).
-Session 5 ended with the continuous-shape toggle BUILT but un-QA'd — the owner moved to the handoff before
-confirming it. Verify it FIRST (test in SESSION 5): Rounded shape + a below extension + a gradient, then
-toggle **Continuous OFF** → expect a rounded icon on a SQUARE plate (vs ON = one continuous pill). If it
-misbehaves, ask for the **BugSack** text. THEN continue with the ▶▶ NEXT list (the stub Config sections).
+## ▶ FIRST THING NEXT SESSION: nothing is mid-flight — pick from the ▶▶ NEXT list.
+Session 6 ended clean (the owner: "I think we're good"). Everything built this session was QA'd in-game and
+is listed under SESSION 6. The continuous-shape toggle (session 5's open item) is now QA'd AND reworked
+(circle/hexagon force it ON; see SESSION 6). No un-verified builds are pending. Start from ▶▶ NEXT.
 
-## ✔ RESOLVED in session 5: the "stretched rounded corners" problem — by CUTTING per-corner mixing.
-Mixed corners (e.g. rounded-top/sharp-bottom on a NON-square icon) can't render cleanly: 9-slice masks
-have a ~44px short-side FLOOR (the fixed-texel corner can't fit a small button), and the preview never
-implemented slicing. DECISION with the owner: **per-corner mixing is REMOVED** — corners are now all-or-
-nothing (Circle / Rounded / Square). The PILL covers rounded-non-square; the **continuous-OFF plate**
-covers rounded-top/square-bottom via composition. **Do NOT re-attempt mixed-corner masks** (SESSION 5).
+## ✔ SETTLED: per-corner MIXING stays cut for the ICON, but mixed-corner ART is used for OVERLAYS.
+Session 5 cut per-corner mixing for the ICON MASK (9-slice had a ~44px short-side floor; do NOT re-attempt
+a mixed ICON mask). BUT the full-render mixed-corner PNGs (`corner-<TLTRBLBR>-r<N>`) still exist and are
+now USED for OVERLAYS that span a continuous-OFF construction (rounded icon + SQUARE plate): the proc GLOW
+and the cast FILL pick `corner-1100` (below-plate) / `corner-0011` (above-plate) so their plate end goes
+square. These are soft/whole-image renders, not 9-sliced, so no floor problem. (SESSION 6, `mixedCornerBase`.)
 
 > Update this file at the end of EVERY session: what was built, what was QA'd in-game,
 > what was learned, what's next. This is the anti-relitigation record — if it's marked
@@ -71,6 +71,21 @@ geometry); bars 1–8 (pet/stance/extra later); standalone (no Masque); slash `/
 - **Border = a colored shape-backing** (a shape copy behind the icon, oversized by thickness), works
   for ALL shapes, reuses the masks. Lives in Decoration.
 
+**Settled decisions (2026-07-19, session 6 — do not reopen):**
+- **Continuous-OFF only applies with a PLATE on a straight-sided shape.** Circle + hexagon force
+  Continuous ON (engine + greyed toggle); with no extension the engine forces it ON too (else the
+  gradient plate loses its mask and draws as a square — the hexagon-gradient regression). A circle +
+  an extension = a pill.
+- **Proc-glow art = a WIDE soft bloom, GLOW_EXTENT 80 / GLOW_SCALE 128÷80.** Reprofiled twice this
+  session (peak at the silhouette, wide Gaussian, inward rim-light). Bigger/softer than the old 96.
+  The saved glow Size is reset ONCE via the `glowWideBloom` flag (art geometry changed).
+- **Proc glow (and any alert-driven overlay) must gate on OUR action buttons only** — Midnight's
+  Cooldown Viewer frames ALSO fire the spell-alert manager and their geometry is a SECRET combat value
+  (arithmetic on it taints + throws). `Glows.isOurs` (a set from `GB:ForEachButton`) is the gate.
+- **Standalone-consume LibSharedMedia** (no embed yet): `GB.GetLSM()` = `LibStub("LibSharedMedia-3.0",
+  true)`; we register our bundled fonts into it. Guaranteed present on the owner's client (BugSack et al.
+  embed it). Embedding via `.pkgmeta` is a future hardening step for standalone release robustness.
+
 ## ★★ NORTH STAR (the owner, 2026-07-18): USER-AUTHORED styles via a style editor
 The owner: "I wanted to build this via the UI myself — not a baked-in recipe. Define the
 height and width of the icons (via the UI), overlay a gradient and position it, decide
@@ -111,8 +126,8 @@ probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
   SetAssistedHighlightFrameShown`; silences Blizzard frames via durable alpha-0; one
   shaped additive pulsing halo per button (gold procs / blue assist). ✅ QA'd: real
   in-combat proc traced the shape on round AND square. Assist-highlight replacement also
-  observed working (LOW PRIORITY per the owner — do not iterate on it). 📌 "Hard to see" →
-  intensity/styling controls in the editor.
+  observed working (LOW PRIORITY per the owner — do not iterate on it). ✅ "Hard to see" RESOLVED
+  session 6: color/Brightness/Size/Pulse controls + a wide soft bloom (see SESSION 6).
 - **Cast/channel overlay**: drain (`CastFill` mask swap), inner glow (art replacement via
   `PlaySpellCastAnim` hook, lime/gold, RING_FIT sizing), `EndBurst` end flash (mask
   swap). ✅ FULLY QA'd on round and square.
@@ -121,7 +136,8 @@ probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
   primitives), keybind override (position/font/size/color, re-asserted via `UpdateHotkeys`
   hook, text container raised). ✅ QA'd against the owner's Figma mock.
 - **Text**: Count/Name/HotKey on bundled GeneralSans (sizes/flags/range-coloring kept).
-  ✅ Verified via `/gb fontinfo`. The owner finds GeneralSans bland → font picker later, try Khand.
+  ✅ Verified via `/gb fontinfo`. ✅ Font picker DONE session 6 (LibSharedMedia dropdown); Count/Name
+  per-style overrides still backlog.
 
 **Dev slash commands** (scaffolding, not product): `/gb skin`, `/gb shape <name>`,
 `/gb style <name>`, `/gb sweep <px>`, `/gb debug`, `/gb glowinfo`, `/gb fontinfo`,
@@ -273,7 +289,7 @@ All committed to `main` (latest `023487e`).
   NOT the secret cooldown wall. **`SetSwipeTexture` rejects non-square/non-pow2 textures** (API-NOTES §2).
 - **Reads-from-events note**: we poll `Unit*Info` in an OnUpdate + hook `PlaySpellCastAnim`; no secret reads.
 - db added: `castFillColor`, `castFillAlpha`, `castDrainDir` (up/down/left/right), `castInterruptColor`,
-  `castInterruptSpeed`. **These have NO Config UI yet** — the owner explicitly wants controls (NEXT #2).
+  `castInterruptSpeed`. ✅ **Config UI DONE session 6** (Cast & channel section).
 
 ## ★ SESSION 5 (2026-07-19 cont.) — HEXAGON + BORDER + CONSTRUCTION REWORK; per-corner mixing CUT (UNCOMMITTED)
 Everything below is in the WORKING TREE, un-committed (base `edb4ef0`). QA status noted per item.
@@ -318,18 +334,92 @@ continuous-OFF the border frames only the ICON; wrapping the whole square-bottom
 TWO-PIECE border (offered to the owner, deferred). (c) The PREVIEW still doesn't render the plate/extension
 (shape + border only), so a plated construction preview ≠ the bars.
 
-## ▶▶ NEXT (session 6) — in priority order
-0. **QA the continuous-shape toggle** (built, unverified — test at top of file).
-1. **Wire the cast-fill Config controls** the owner asked for: fill **direction** (up/down/left/right),
-   **colour**, **opacity**, + **interrupt colour** and **speed** — db fields exist, engine reads them live;
-   needs a Config section (toolkit: sliderRow / colorSwatch / makeToggle; 4-way picker = 4 flatButtons).
-2. Wire the other stub sections: **Text** (keybind — `ApplyHotkeyOverride` exists; route via
-   `styleData.hotkey`), **Proc glow** (Glows.lua; tint/intensity/width → db), **Apply to bars**.
-3. Render the decoration **plate/extension in the preview pane** (currently shape/zoom/state/border only).
-4. If the owner wants it: the **two-piece border** for continuous-OFF (frame icon + square plate as one outline).
-5. Deferred-feedback backlog below; **Bar-layout / geometry-fork scope** decision (out-of-combat; taint).
+## ★ SESSION 6 (2026-07-19 cont.) — CONFIG WIRING + PROC GLOW + KEYBIND/FONTS + continuous-OFF (UNCOMMITTED, ALL QA'd)
+A long session: wired most stub Config sections, made the proc glow fully controllable + fixed its
+shape/aspect/taint/pulse, added a real font picker + Mac modifier icons, and closed several continuous-OFF
+gaps. Everything below was verified in-game (the owner: "I think we're good"). Base `829a96f`.
+
+**Gradient reliability + direction + fade-start (Skin.lua `ApplyDecor`, all QA'd).**
+- **Mask-retry (the original hexagon-gradient bug):** a plate is a fresh WHITE8X8 whose first
+  `AddMaskTexture` silently fails (never-rendered quirk, API-NOTES §2) — and a fixed-aspect hexagon never
+  changes `maskKey` to retry, so the gradient drew UNMASKED (square). Fix: `rec.plateFresh` → force ONE
+  mask rebuild next frame via `C_Timer.After(0)` (`rec.forcePlateMask`), by when the plate has drawn.
+- **Unified directional gradient:** one renderer replaces the old extension/else split. `layer.dir`
+  (up/down/left/right) picks the solid edge + fade axis; `layer.bleedPct` ("Fade start") = the fade reach
+  on EVERY shape (was extension-only — the hexagon fade-start now works). An extension on the solid edge
+  still draws as a flat SOLID zone first (the plate look). Config: **Direction** 4-way (`dirRow` toolkit).
+
+**Two-tone + alpha border (Skin.lua border block + Config Decoration, QA'd).** `border.color2` +
+`border.gradDir` → `SetGradient` (only the rim shows → a colour transition); one colour = flat. The colour
+pickers are alpha-enabled (`colorSwatch(...,withAlpha)` → `{r,g,b,a}`); each stop's alpha × the master
+Opacity. Config: **Two-tone** toggle + **Color 2** + **Blend dir**.
+
+**Cast & channel Config section (QA'd).** Wired the db fields from session 4: **Fill color / Opacity /
+Direction**, **Interrupt color / Speed**. db-level, engine reads them on the NEXT cast (no live preview —
+the preview doesn't animate casts).
+
+**Text / keybind section (QA'd).** `styleData.hotkey` {zone (center/extension), offsetX/Y, size, font,
+flags, color} via `ApplyHotkeyOverride` (existing) + `ReapplyDecor`. Config: Custom-keybind master toggle
++ Color/Size/**Font dropdown**/Position (Zone 2-way + X/Y offsets), greyed when off.
+
+**LibSharedMedia font picker (QA'd).** `GB.GetLSM()` consumes the shared LSM; `GB.BUNDLED_FONTS` registered
+into it at login (`RegisterMedia`). Config: a **scrollable font-dropdown flyout** (`fontDropdown`/
+`fontFlyoutFrame`, FULLSCREEN_DIALOG strata + a click-catcher) listing every LSM font, each row drawn IN
+its font. Engine resolves `hotkey.font` via `resolveFont` (LSM name → bundled map → legacy GB.FONT key).
+
+**Mac modifier icons (QA'd, the owner loves it).** Opt-in `styleData.keybindMods == "symbols"`: rewrite the
+keybind text's modifier PREFIXES (`s-`/`c-`/`a-`/`m-` = Shift/Ctrl/Alt/Cmd) into inline ⇧/⌃/⌥/⌘ glyph
+textures (`|T...|t`), hyphen removed — general (any bind), re-asserted in the `UpdateHotkeys` hook. Glyph
+PNGs from NEW `tools/generate-modglyphs.py` (macOS SFNS font → `Media/ui/{cmd,shift,ctrl,opt}.png`).
+DECISION: glyphs stay WHITE (`:0` line-height) — the owner tried a coloured/sized variant (`|T...:px:...:r:g:b|t`
+reading `GetTextColor`/`GetFont`) and it rendered MASSIVE + he preferred plain white. Don't re-add colour.
+
+**Sliders easier to grab (Config `sliderRow`, QA'd).** The thin thumb was a 5px hit target; now the frame
+is a tall full-width hit area with a thin visual track centered, plus **click/drag-anywhere-to-seek**
+(cursor→value, snap to step). All sliders benefit.
+
+**Proc glow — fully controllable + many fixes (Glows.lua, all QA'd).** THE differentiator, now tunable +
+correct. Config **Proc glow** section: **Proc/Assist color, Brightness, Size, Pulse speed** (db-level,
+live via `GB.Glows` setters; preview reflects color/size/brightness on the Proc chip). Fixes, in order:
+- **TAINT:** Midnight's Cooldown Viewer frames fire the alert manager too, and their geometry is a SECRET
+  value → arithmetic tainted. `isOurs` gates all glow paths to our action buttons (see settled decisions).
+- **Shape follows the shape** (`RefreshShape` from `SetShape`; the texture was set once at creation).
+- **Aspect + construction:** the halo anchors to the icon CORNERS via `Skin:AnchorOverlay` (=
+  `AnchorConstruction`), so it tracks size/aspect AND spans the plate extension (`RefreshSize` from
+  `SetIconSize`/`ReapplyDecor`).
+- **Pulse:** Brightness was the pulse FLOOR (at 100% floor==peak → no pulse). Now Brightness = PEAK and
+  the pulse always dips to `peak × PULSE_DEPTH(0.5)`.
+- **Art = soft WIDE bloom** (see settled decisions): GLOW_EXTENT 96→80, GLOW_SCALE 128÷80, wide Gaussian
+  `glow_alpha` (peak at the silhouette, inward rim-light). `tools/generate-art.py glows` = fast glow-only
+  regen. Reset saved Size once (`glowWideBloom`).
+- **Continuous-OFF match (tier 1):** glow uses `Skin:GlowArt()` → the mixed-corner glow (rounded icon end,
+  square plate end) so it hugs the square plate. Rounded shapes only; circle/square/hexagon keep their own.
+
+**Continuous-OFF closed gaps (QA'd).** (a) hexagon-gradient regression fixed (force continuous when
+ext==0 — see settled decisions). (b) **cast FILL** now uses the same mixed-corner mask (`mixedCornerBase`)
+so its bottom squares to the plate. (c) circle forces continuous + toggle greyed.
+
+**New db (Core):** `glow{Color,AssistColor,Intensity(peak),Scale,PulseSpeed}`, `glowWideBloom`,
+`BUNDLED_FONTS`, `GetLSM`/`RegisterMedia`. **New styleData:** `hotkey{...}`, `keybindMods`, `border.color2`
+/`gradDir`/`color[4]`, `layers[].dir`. **Shared helper:** `Skin.mixedCornerBase()` (continuous-OFF hybrid
+pattern) feeds `Skin:GlowArt()` + the cast fill.
+
+📌 **Open follow-ups from session 6:** (a) **aspect proc-glow art** — a stretched non-square icon still
+stretches the base round glow (uneven short vs long axis); the soft bloom forgives it and the owner said "good
+enough," but true `pill-*-glow` art (like the ring/mask) is the clean fix if he asks. (b) two-piece border
+for continuous-OFF (still deferred). (c) preview still doesn't render the plate/extension or the fill
+gradient direction (shape/border/glow only). (d) custom family-styled color picker (still Blizzard's).
+
+## ▶▶ NEXT (session 7) — in priority order
+1. **Render the decoration plate/extension in the preview pane** (currently shape/zoom/state/border/glow) —
+   so Direction/Fade-start/extension preview matches the bars. Biggest remaining preview gap.
+2. **Apply to bars** (per-bar enable/disable) — the last major stub section; needs engine per-bar support.
+3. **Aspect proc-glow art** (`pill-*-glow`) if the owner wants tall-shape glows even (follow-up a above).
+4. **Two-piece border** for continuous-OFF (frame icon + square plate as one outline).
+5. **State highlights too subtle** (deferred feedback below) + custom **color picker** (family-styled).
+6. **Bar-layout / geometry-fork scope** decision (out-of-combat; taint).
 - Anytime: densify `PILL_RATIOS` if nearest-aspect snapping stretches caps; assist-frame border still base
-  art (low priority, the owner: don't iterate); proc-glow aspect art (soft halo forgives the stretch).
+  art (low priority, the owner: don't iterate); embed LSM via `.pkgmeta` for standalone release robustness.
 
 ## Config UI — deferred feedback (the owner, 2026-07-18, in-game QA of the editor)
 The owner chose to defer these to keep wiring the sub-panels; revisit after breadth:
