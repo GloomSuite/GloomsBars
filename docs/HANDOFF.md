@@ -1,17 +1,109 @@
 # Gloom's Bars — Session Handoff
-**Last updated: end of session 8 (2026-07-21). ⇒ Read SESSION 8 FIRST — it is a MAJOR pivot (the
-"shaped-glow rebuild": free width/height is being REPLACED by 21 hand-authored preset shapes, and the
-glow is being rebuilt as a multi-part outer+inner+border system). Then read the new docs it produced —
-[SHAPE-CATALOG.md](SHAPE-CATALOG.md) (Phase 1, FROZEN), [EFFECTS-MATRIX.md](EFFECTS-MATRIX.md) (Phase 2),
-[ART-SPEC.md](ART-SPEC.md) (the hand-asset spec + naming). Sessions 2–7 below are the still-valid skin/
-Config foundation, but the glow/shape parts of them are being superseded by session 8.**
+**Last updated: end of session 9 (2026-07-21). ⇒ Read SESSION 9 FIRST — it turned the session-8 pivot
+into the real product: the 21 hand shapes are now a persisted, Config-selectable setting (NEXT #2 done),
+AND every button state (proc / hover / selected / cast / channel / cooldown sweep / flash) is now driven by
+the multi-part shaped glow (NEXT #1 done). All committed + QA'd in-game. Session 8 (the pivot) and the docs
+it produced — [SHAPE-CATALOG.md](SHAPE-CATALOG.md) (FROZEN), [EFFECTS-MATRIX.md](EFFECTS-MATRIX.md),
+[ART-SPEC.md](ART-SPEC.md) — are still the reference; sessions 2–7 are the still-valid skin/Config
+foundation (their SDF-shape/old-glow parts are superseded by 8+9).**
 
-## ▶ FIRST THING NEXT SESSION (session 9): pick up at SESSION 8 → "▶▶ NEXT (session 9)".
-Session 8 built + QA'd the ENTIRE shaped-render foundation as a DEV PREVIEW (`/gb handshape <key>`): for any
-of the 21 hand shapes, the icon clips to it AND the gradient + border + glow all follow it. Validated
-in-game on diamond (pointy) and pill32 with a thick border (round caps, glow clears the border). The owner:
-"That works better." **Nothing is mid-flight; the preview works.** The remaining work is turning the preview
-into the real thing (wire to triggers, real shape picker, animation) — see the session-8 NEXT list.
+## ▶ FIRST THING NEXT SESSION (session 10): pick up at SESSION 9 → "▶▶ NEXT (session 10)".
+Nothing is mid-flight — session 9 ends clean, everything committed (HEAD = the handoff commit; the last code
+commit is `2d26e57`). The shape system + the whole glow-to-triggers effort are DONE and QA'd. Remaining work
+is polish + the two later priorities (animation layer, effects-matrix gaps) — see the session-9 NEXT list.
+
+## ★★★ SESSION 9 (2026-07-21) — SHAPE SELECTION + PERSISTENCE, then GLOW-TO-TRIGGERS (both major; ALL committed + QA'd)
+A long, high-throughput session. Delivered BOTH remaining big pieces of the shaped-glow rebuild end-to-end.
+Structured, one-QA-step-at-a-time (the owner's workflow). Commits: `7903687` (shape selection), `32d66d2`
+(proc glow), `54dde4e` (hover/selected), `c09ef80` (cast/cooldown shape), `88eda98` (cast rim glow),
+`2d26e57` (flash). **Do NOT relitigate anything below — it's all QA'd in-game and settled.**
+
+### PART A — Real shape selection + persistence (was NEXT #2). Commit `7903687`.
+- **`db.handShape`** (a `GB.HAND_SHAPES` key) + **`db.sizeScale`** (uniform × the Edit-Mode button size) are
+  real saved settings. `handShape` is **read straight from the db** (Skin `handKey()`), so it survives /reload.
+  Seeded on first run from the legacy SDF shape (circle→circle, square→square, hexagon→hexagon, rounded→roundsq2).
+- **`GB.HAND_SHAPES` / `HAND_ORDER` / `HAND_GROUPS`** (Core.lua): the 21 keys' metadata (aspect, orient, label)
+  + picker grouping (1:1 / Portrait / Landscape). `GB:HandAsset(key, part)` = `Media/art/hand/<key>-<part>.png`.
+  `GB:HandShapeInfo(key)` → {aspect, orient, label}.
+- **The pivot mechanic:** `applyIconSize`/`handIconSize` derive the icon W/H from the shape's aspect × sizeScale
+  (portrait → tall, landscape → wide, 1:1 → square), so the icon is ALWAYS the right proportion with **no manual
+  sizing** — free width/height is retired. `refreshIconGeometry` is the shared per-button refresh used by
+  `SetIconSize`/`SetHandShape`/`SetSizeScale`. iconW/iconH are still WRITTEN (derived) so downstream anchor math
+  is unchanged; they're just no longer user-facing.
+- **Config Shape & icon rebuilt** as a **grouped thumbnail grid** of all 21 silhouettes (each drawn from its own
+  `-base` art, purple-selected, hover tooltip) + a single **Size** slider. Removed the SDF corner presets, corner
+  radius, icon width/height, lock-aspect. Kept Icon zoom + Crop to fill. Preview pane renders the actual hand
+  silhouette (icon mask + border + gradient) via a per-axis anchor mirroring `Skin.hgAnchor`.
+- **Shared `makeScrollbar`** helper (Config.lua): a thin custom scrollbar with the **orange caret-colour thumb**,
+  **click/drag-anywhere-on-track to jump** (same QOL as the sliders), wheel, auto-sized to live range. Used by the
+  main window AND the font dropdown. Reuse it for any future scrollbar (returns `:Sync()`).
+- `/gb handshape <key>` persists now; `/gb size <n>` added; `/gb handglow [off]` = force the multi-part glow on to
+  study it out of combat. SDF shape system left DORMANT as fallback (handKey nil path — never hit post-migration).
+
+### PART B — Glow to real triggers (was NEXT #1, "the payoff"). Every button state → the multi-part shaped glow.
+The multi-part glow = **outer** (a per-shape `-outer` texture UNDER the icon at BACKGROUND −2, perfect outward
+falloff) + **inner** (`-inner` OVER the gradient at **btn+3** — above the plate at +2, BELOW the text container at
++4 so keybind/count render over it) + **border recolour** (the button's Border adopts the glow tint). One tintable
+WHITE pair per shape (`Media/art/hand/<key>-outer|-inner`) serves ALL triggers, differing only by tint + pulse.
+- **Engine (Glows.lua):** per-button `getHandGlow`/`applyHandGlow(btn,tint,pulse,peak)`/`hideHandGlow`; a shared
+  **pulse driver** (one OnUpdate animates every ACTIVE glow's alpha between peak and peak×PULSE_DEPTH — runs only
+  while ≥1 glow is active). `Refresh` reconciles per-button **sources** by priority and calls `resolveGlow`.
+- **Sources + priority (highest first): assist > proc(alert) > cast > flash > selected > hover > dev-test.**
+  Procs/assist/flash/test PULSE; cast/selected/hover are STATIC. State highlights (hover/selected/flash) use
+  `stateColors` + `stateIntensity`; procs use the proc Colour/Brightness; cast uses `CAST_TINT_G` (gold cast / lime
+  channel). `SetSource` skips the refresh when a value is unchanged (kills churn from the frequent state event).
+- **Triggers wired:**
+  - **Proc / assist** — the existing alert-manager + assisted-highlight hooks (unchanged) now route to the multi-part
+    glow. `32d66d2`. Config Proc glow: Colour, Brightness (peak alpha, live), Pulse speed (live). **Size removed**
+    (baked into the art + border grow).
+  - **Hover** — per-button `OnEnter`/`OnLeave` hooks. Blizzard's square highlight ring suppressed (alpha 0). `54dde4e`.
+  - **Selected** — `ACTIONBAR_UPDATE_STATE` + `GetChecked()` (reads rendered state, no secret). Checked ring
+    suppressed. NB: Blizzard checks a button briefly on ability PRESS (current-action) → a brief selected glow on
+    press; that's DEFAULT behaviour, expected. `54dde4e`.
+  - **Cast / channel** — `PlaySpellCastAnim` hook → `Glows:SetCast(btn,"cast"/"channel")`; cleared when the cast ends
+    (via `f.gbBtn` in `CastFillOnUpdate`). Steady lime/gold halo; the drain fill shows progress. `88eda98`.
+  - **Flash** — auto-attack/auto-shot: per-button `StartFlash`/`StopFlash` hooks (they toggle the flashing STATE,
+    not each blink). SDF flash ring suppressed. Needs the "Attack" ability on a bar to have a button to flash. `2d26e57`.
+- **Cast/cooldown made shape-correct (`c09ef80`):** the cast **fill/drain**, **completion & interrupt bursts**, and
+  the **finish flash** now source the hand `-base` mask / `-outer` art. **Cooldown sweep**: each shape has its own
+  `-swipe` (generated — see learnings) so the sweep traces the silhouette (normal + LoC + charge cooldowns).
+  **Completion burst got its own colour** (`db.castCompleteColor`, Config → Cast & channel → Complete color) — was
+  Blizzard's native white.
+
+### ★★ HARD-WON LEARNINGS this session (do NOT rediscover):
+- **`hgAnchor` sizes a frame to 2× the icon** (the hand silhouette occupies the CENTRE half of its canvas, so mapping
+  it onto the icon needs a 2× region). STATIC glows (outer/inner/finish-flash) NEED that 2× frame. But a **DRAINING
+  rectangle must NOT use it** — the cast fill on a 2× frame drained over 2× the height, so only the middle 50% was
+  ever visible → "cast bar starts at 25%, ends at 75%". The fill FRAME stays icon-sized; the MASK does the shaping.
+- **The hand `-swipe` crop has NO art padding** (unlike the SDF swipe's 8px), so a hand cooldown anchors to the icon
+  bounds EXACTLY — no `GROW_RATIO` grow (that overshot, worst on the long axis of 2:1/3:2), and no `+0.75px` AA fudge
+  (a WHITE sweep makes any overshoot fringe visible; 0 is right since the swipe + icon mask share the reference rect).
+- **One-shot alpha-0 suppression LOSES to Blizzard's cast animation**, which re-drives the InnerGlow alpha every
+  frame — so a rounded-square overlay reappears mid-cast. Suppress it **every frame** in `CastFillOnUpdate` (same
+  pattern already used for CastFill + the interrupt square).
+- **Inner glow at btn+3** (above gradient +2, below text +4) is what keeps the keybind/count readable over the glow.
+- **Cooldown swipe is engine-generated from the hand base** — `tools/generate-hand-swipes.py` (PIL): crop the icon
+  reference rect (uniform 128px margin), resize to a SQUARE 256² pow2 (the squish is the PRE-DISTORTION — the
+  cooldown frame's real aspect un-distorts it), bake 0.8 alpha (matches SDF `swipe_alpha`; `applySwipe` multiplies
+  the user swipeAlpha on top). Re-run if a base changes. 21 `-swipe.png` in `Media/art/hand/`.
+- **Three DISTINCT end-bursts, each its own colour** (don't conflate): cooldown **Finish flash** (Cooldown &
+  availability — fires when an ability comes OFF cooldown, >2s GCD-filtered), cast **Complete color** (Cast &
+  channel — successful cast/channel end), cast **Interrupt color** (cancelled cast). All separate events.
+
+### ▶▶ NEXT (session 10) — in priority order
+1. **Glow polish (small):** (a) the Config **preview pane's Proc + Cooldown chips still show the OLD SDF art** (the
+   idle/hover/selected shape is correct; only those two animated chips lag) — point them at the multi-part glow /
+   hand swipe. (b) **Per-state appearance independence** — the owner's note: hover SHOULD read subtler than proc/selected,
+   but they share one glow with only per-colour/per-intensity control. Add per-state spread/softness (would also make
+   the now-dead `stateWidth` "Glow width" control meaningful again for hand shapes).
+2. **Animation layer (NEXT #3 — the fun one):** the rotating shine-chase the owner misses — a bright comet masked to the
+   shape's rim, rotating, layered on the static glow. Works on any silhouette (one shared shine texture + a rim mask).
+3. **Effects-matrix gaps (NEXT #4):** the last square art — `SpellHighlightTexture` (pulsing "press this"),
+   `CooldownFlash` (GCD flipbook), `NewActionTexture`, flyout member background. See EFFECTS-MATRIX.md §B/§A/§I.
+- **Anytime / smaller:** cast-glow brightness is coupled to the proc Brightness (`glowPeak`) — could get its own; the
+  cast glow colour is fixed `CAST_TINT_G` (gold/lime) — could be a Config control; assist glow stays low-priority
+  (don't iterate); the preview Cooldown chip; the SDF shape/old-bloom code is dormant (can be removed once nothing
+  references it). Coexistence QA with ArcUI/EQOL re-enabled (our hover/flash/icon-vertex work touches more now).
 
 ## ★★★ SESSION 8 (2026-07-21) — THE SHAPED-GLOW REBUILD (major pivot; all QA'd; UNCOMMITTED until this commit)
 A long, decisive session. We reframed the whole shape/glow model, and built + validated the render foundation
@@ -84,21 +176,16 @@ It is NOT yet: (a) wired to real triggers (glow is force-on), (b) selectable in 
 (handShapeKey is session-only, not saved to db). The old SDF/aspect shape system is still in place underneath;
 hand shapes ride ON TOP via handShapeKey.
 
-## ▶▶ NEXT (session 9) — in priority order
-1. **Wire the multi-part glow to REAL triggers** — replace the old single-bloom (`Glows.lua` proc engine) +
-   the state ring so the outer+inner+border-recolour glow fires on procs (gold), hover/selected (tinted, from
-   the state highlight paths), cast (lime), and the finish flash. Currently it's force-on via `HandPreview`;
-   make it event-driven and per-shape. This is the payoff (shaped glow on a real proc).
-2. **Real shape selection + persistence** — make `handShapeKey` come from `GB.db` (a real setting, applied at
-   skin/decor time, surviving /reload), Config picker lists the 21 presets, REMOVE the free width/height
-   sliders, add the uniform size scale. Retire/replace the SDF shape path for the icon where it's superseded.
-3. **Animation layer** — the rotating-shine chase (the owner misses it): a bright comet masked to the shape's rim,
-   rotating; works on any silhouette, cheap (one shared shine texture + a rim mask). Layers on the static glow.
-4. **Close the effects-matrix GAPS** — suppress/shape `SpellHighlightTexture`, `CooldownFlash` (GCD flipbook),
-   `NewActionTexture`; flyout background (long-deferred).
-- Cleanup anytime: delete the `gbtest-glow-*` bake-off assets + `/gb glowstyle`/`glowtest` once triggers are
-  wired; the per-axis border assumes the icon aspect matches the shape aspect (true once the shape picker sets
-  the aspect — for the dev preview the owner sets a matching icon size by hand).
+## ▶▶ NEXT (session 9) — [DONE in session 9 — see the SESSION 9 block at the top of this file]
+1. ✅ **Wire the multi-part glow to REAL triggers** — DONE. Proc/hover/selected/cast/channel/flash all drive
+   the outer+inner+border glow, event-driven + per-shape, reconciled by source priority. (Session 9 PART B.)
+2. ✅ **Real shape selection + persistence** — DONE. `db.handShape`/`db.sizeScale`, 21-preset Config picker,
+   free width/height removed, uniform size scale, preview renders hand shapes. (Session 9 PART A.)
+3. ⏳ **Animation layer** — still NEXT (session 10 #2). The rotating-shine chase; layers on the static glow.
+4. ⏳ **Close the effects-matrix GAPS** — still NEXT (session 10 #3). `SpellHighlightTexture`, `CooldownFlash`
+   (GCD flipbook), `NewActionTexture`, flyout background.
+- Cleanup done/available: the `gbtest-glow-*` bake-off assets + `/gb glowstyle`/`glowtest` are now removable
+  (triggers are wired); the per-axis border/aspect assumption is resolved (the shape picker sets the aspect).
 
 ## ✔ SETTLED (session 7): Blizzard's cooldown EDGE + finish BLING can't be shaped — don't re-attempt.
 The cooldown SWEEP follows the shape via its swipe-texture alpha (works). But the rotating EDGE line and the
@@ -270,6 +357,8 @@ probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
 | 4 | `IsActionInRange`/`IsUsableAction` readable in Midnight combat (custom range tint) | ✅ SIDESTEPPED (session 7) — we never CALL them; we react to `UpdateUsable`'s icon vertex + `UpdateRangeIndicator`'s `inRange` arg (Blizzard's rendered output). No secret read; usable/OOM/unusable/out-of-range tints all work in combat |
 | 5 | Blizzard hook points (UpdateButtonArt, alert manager, cast anim, hotkeys…) | ✅ SOURCE-VERIFIED @ exact client build + confirmed in-game via the working hooks (API-NOTES §3) |
 | 6 | Proc glows hookable without secret reads | ✅ VERIFIED IN COMBAT — the differentiator is proven |
+| 7 | ALL states drive the multi-part shaped glow (proc/hover/selected/cast/channel/flash) per-shape | ✅ VERIFIED IN COMBAT (session 9) — every trigger reconciled by source priority; no secret reads |
+| 8 | Cooldown sweep + cast fill/burst + finish flash trace the hand silhouette | ✅ VERIFIED (session 9) — hand `-swipe` generated from the base; fill/burst mask from `-base` |
 
 ## Hard-won LEARNINGS (verified — do NOT rediscover; details in API-NOTES)
 - **Masks**: fresh masks render; editing a live mask's texture never re-renders; runtime
