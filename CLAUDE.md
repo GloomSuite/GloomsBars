@@ -9,6 +9,14 @@
 > The frozen references [docs/SHAPE-CATALOG.md](docs/SHAPE-CATALOG.md),
 > [docs/EFFECTS-MATRIX.md](docs/EFFECTS-MATRIX.md), [docs/ART-SPEC.md](docs/ART-SPEC.md) still apply.
 
+> **▶ PART OF THE GLOOM SUITE.** Gloom's Bars is being unified with Gloom's Auras + Gloom's
+> Overlays under a shared base addon, **GloomsHub** (`~/GloomsHub`). All cross-cutting suite
+> facts — the plan, current phase status, and shared runtime contracts — live THERE and are the
+> single source of truth; this repo does not keep its own copy. Before any *suite* work (mounting
+> GB's config into the shared tabbed window, the shared toolkit/tokens, media/resolver), read
+> `~/GloomsHub/docs/SUITE-STATE.md` first, then SUITE-PLAN.md / CONTRACTS.md. Normal GB-only
+> work (skin, glows, layout, bugs) proceeds here as usual. **Gloom's Build Barn is NOT in the suite.**
+
 Bespoke WoW addon: an **appearance + geometry layer** for Blizzard's built-in action bars —
 rounded / non-square icons, restyled text, **shape-matched proc glows + cooldown sweeps**
 (the differentiator), a per-trigger animation system, and **opt-in per-bar layout** (size,
