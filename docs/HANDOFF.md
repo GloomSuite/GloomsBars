@@ -1,4 +1,33 @@
 # Gloom's Bars — Session Handoff
+
+## ★★★ SESSION 16 (2026-07-24) — CLAUDE.md REWRITE · DEAD-ASSET CLEANUP · GLOOM SUITE / GloomsHub SCAFFOLD. ALL COMMITTED, tree clean.
+No in-game changes to GB's runtime this session (docs + asset cleanup + a new sibling repo). GB commits, in order:
+`c18ac2b` (CLAUDE.md rewrite), `1dfdff3` (delete dead corner art + trim generator/registry), `f5bc569` (suite
+plan, later reduced to a pointer), `ee001fe` (suite-header + pointer). No push yet.
+- **CLAUDE.md fully rewritten** to current reality (the STALE-PENDING item (b) is now DONE): removed all "pure
+  skin v1 / later phase" framing; documented that GB owns geometry (opt-in, per bar, out-of-combat), all 10 bars
+  incl. pet/stance, the profiles→presets→per-bar model, the RefreshAll combat-gate, and a Debugging-protocol
+  section (trap-the-write, SetVertexColor tints FontStrings, probe-first, Blizzard source on disk). Verified vs code.
+- **Dead-asset cleanup — 288 files / ~2.0 MB removed** (Media 8.4M → 6.4M). Per-corner MIXING was cut long ago;
+  audited every runtime shape-key path and found only 4 corner families reachable: `1111` (roundrect), `0000`
+  (square), and `0011`/`1100` (the plate half-shapes `mixedCornerBase()` builds at runtime — a blind delete would
+  have broken plate mode, so these were KEPT). Deleted the other 12 mixed patterns + trimmed the generator
+  (`generate-art.py` CORNER_PATTERNS) and the Core registration loop so a regen won't resurrect them. ★ QA'd by
+  The owner in-game (plate 2:1 glow + sweep still correct). See the SETTLED block below (§"per-corner MIXING") — still true.
+- **GLOOM SUITE decision + GloomsHub scaffolded (NEW cross-project effort).** GA + GB + Gloom's Overlays (the
+  renamed/reskinned VibeOverlay) are being unified under a shared base addon, **GloomsHub** (`~/GloomsHub`, its own
+  repo, symlinked into AddOns). Each tool renders its config as a TAB in one shared window; **hard dependency, no
+  standalone fallback.** StoneTweaks is being retired (its media half absorbed into the Hub). **★ GloomsHub is the
+  HOME OF RECORD** for all cross-cutting suite facts — the full plan, phase ledger, and shared contracts live in
+  `~/GloomsHub/docs/` (`SUITE-PLAN.md`, `SUITE-STATE.md`, `CONTRACTS.md`); GB only POINTS at them (see the suite
+  header in CLAUDE.md). **Gloom's Build Barn is OUT of the suite** (cron/WarcraftLogs pipeline). This is not GB
+  runtime work — do NOT confuse it with GB features. For suite work, open a session in `~/GloomsHub`, not here.
+  Next suite step is Phase A (in the Hub). Memory: [[gloom-suite-hub]].
+- **STILL-PENDING GB decisions carried:** release tag (sessions 9–16 unshipped) and modifier-symbols outline/shadow
+  (item (d)) both remain open. Item (b) CLAUDE.md rewrite is now CLOSED.
+
+---
+
 **Last updated: end of session 15 (2026-07-23). ⇒ Read SESSION 15 FIRST, then the NO-OPEN-BUGS block below.
 Everything is COMMITTED + QA'd (5 commits, tree clean, 67 ahead of origin — a push closes it out). Session 15
 resolved all THREE session-14 open bugs (two were Blizzard-working-as-intended, not GB defects), shipped four
