@@ -69,19 +69,17 @@ GB.SHAPES = {
   square = shape("square"),
   hexagon = shape("hexagon"),   -- pointy-top regular hex (honeycomb grids); fixed shape like circle
 }
--- Per-corner rounding (the owner 2026-07-18): every corner is independently round or
--- sharp, all rounded corners sharing one radius. The masks (from generate-art.py)
--- span the full 16 on/off patterns × 4 radius levels: "corner-<TL><TR><BL><BR>-r
--- <N>". The Config UI's four corner toggles pick the pattern, the radius slider
--- picks the level. corner-1111-r* == roundrect at that radius, corner-0000-r0 ==
--- square. Masks verified to carry the right silhouette.
+-- Per-corner rounding × 6 radius levels: "corner-<TL><TR><BL><BR>-r<N>".
+-- Per-corner MIXING was cut 2026-07-19 (a mixed pattern can't render cleanly on a
+-- non-square icon; the migration below collapses any saved mixed value). Only the
+-- 4 patterns the engine can reach are registered — matching the baked art:
+--   1111 = all-round (roundrect), 0000 = all-sharp (square), and 0011 / 1100 = the
+--   plate half-shapes built at runtime by Skin.lua's mixedCornerBase(). The other
+--   12 mixed patterns are dead (art deleted) — do NOT re-add them.
+-- corner-1111-r* == roundrect at that radius, corner-0000-r0 == square.
 for level = 0, 5 do
-  for bits = 0, 15 do
-    local tl = math.floor(bits / 8) % 2
-    local tr = math.floor(bits / 4) % 2
-    local bl = math.floor(bits / 2) % 2
-    local br = bits % 2
-    local name = ("corner-%d%d%d%d-r%d"):format(tl, tr, bl, br, level)
+  for _, pat in ipairs({ "1111", "0000", "0011", "1100" }) do
+    local name = ("corner-%s-r%d"):format(pat, level)
     GB.SHAPES[name] = shape(name)
   end
 end

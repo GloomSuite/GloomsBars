@@ -91,13 +91,18 @@ SHAPES = {
     "hexagon": sd_hexagon,
 }
 
-# 16 per-corner on/off patterns × 4 radius levels → "corner-<TL><TR><BL><BR>-r<N>".
-# The Config UI's four corner toggles pick the pattern; the radius slider picks
-# the level. corner-1111-r* == roundrect at that radius, corner-0000-r0 == square.
+# Per-corner shapes × 6 radius levels → "corner-<TL><TR><BL><BR>-r<N>".
+# Per-corner MIXING was cut 2026-07-19 (a mixed pattern can't render cleanly on a
+# non-square icon), so only the 4 patterns the engine can actually reach are baked:
+#   1111 = all-round (roundrect), 0000 = all-sharp (square), and 0011 / 1100 = the
+#   plate half-shapes (rounded icon end, sharp plate end) built at runtime by
+#   Skin.lua's mixedCornerBase() for the plate glow + cast-fill. The other 12 mixed
+#   patterns are dead — do NOT re-add them (they were deleted; ~2 MB). corner-0000-r0
+#   == square, corner-1111-r* == roundrect at that radius.
 RADII = [0.12, 0.25, 0.42, 0.62, 0.82, 1.0]   # radius levels r0..r5; r5 == fully round (a square becomes a circle)
+CORNER_PATTERNS = [(1, 1, 1, 1), (0, 0, 0, 0), (0, 0, 1, 1), (1, 1, 0, 0)]
 for _lvl, _rr in enumerate(RADII):
-    for _bits in range(16):
-        _tl, _tr, _bl, _br = (_bits >> 3) & 1, (_bits >> 2) & 1, (_bits >> 1) & 1, _bits & 1
+    for _tl, _tr, _bl, _br in CORNER_PATTERNS:
         SHAPES["corner-%d%d%d%d-r%d" % (_tl, _tr, _bl, _br, _lvl)] = make_corners_sdf(_tl, _tr, _bl, _br, _rr)
 
 
