@@ -224,7 +224,16 @@ assets require a **full client restart** (a /reload only re-reads existing files
 
 ## Git / releases
 GitHub Releases via BigWigs packager (`.github/workflows/release.yml`), fired by pushing a
-version tag (e.g. `v0.3.0`). WoWUp installs/auto-updates from the repo URL. No
-CurseForge/Wago. `## Version: @project-version@` in the TOC is filled by the packager.
-Last shipped tag: **v0.2.0** — a large body of work since then is unshipped, so a tag is
-warranted whenever the owner wants to cut one.
+version tag. WoWUp installs/auto-updates from the repo URL. No CurseForge/Wago.
+`## Version: @project-version@` in the TOC is filled by the packager.
+
+**Currently shipped: `v1.0.0` (2026-07-24, suite Phase G.)** The whole suite released together
+at `v1.0.0`; GB jumped `v0.2.0` → `v1.0.0`, closing a large body of unshipped work (animations,
+plate, profiles, layout, 3-panel, pet/stance, and the Phase C tab migration).
+⚠ **Before that, the published `v0.2.0` was tagged at a PRE-Phase-C commit** — two Lua files,
+no config UI, no `## Dependencies: GloomsHub`. Anyone still on it has a stale standalone GB.
+**Lesson: check what a tag POINTS AT, not just that it exists.**
+
+★ **Release state is a SUITE fact, and its home of record is
+`~/GloomsHub/docs/SUITE-STATE.md` (Phase G row).** Don't restate version numbers here beyond
+the line above — update the Hub.

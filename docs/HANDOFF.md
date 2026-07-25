@@ -22,9 +22,12 @@ plan, later reduced to a pointer), `ee001fe` (suite-header + pointer). No push y
   `~/GloomsHub/docs/` (`SUITE-PLAN.md`, `SUITE-STATE.md`, `CONTRACTS.md`); GB only POINTS at them (see the suite
   header in CLAUDE.md). **Gloom's Build Barn is OUT of the suite** (cron/WarcraftLogs pipeline). This is not GB
   runtime work — do NOT confuse it with GB features. For suite work, open a session in `~/GloomsHub`, not here.
-  Next suite step is Phase A (in the Hub). Memory: [[gloom-suite-hub]].
-- **STILL-PENDING GB decisions carried:** release tag (sessions 9–16 unshipped) and modifier-symbols outline/shadow
-  (item (d)) both remain open. Item (b) CLAUDE.md rewrite is now CLOSED.
+  **Suite progress lives in `~/GloomsHub/docs/SUITE-STATE.md` — do not restate it here.** (For orientation
+  only, as of 2026-07-24: the 7-phase plan is code-complete — GB migrated into the Suite window's Bars tab
+  in Phase C, and Phase G released the whole suite at `v1.0.0`.) Memory: [[gloom-suite-hub]].
+- **STILL-PENDING GB decisions carried:** modifier-symbols outline/shadow (item (d)) remains open.
+  Item (b) CLAUDE.md rewrite is CLOSED, and **item (c) release tag is CLOSED — `v1.0.0` shipped
+  2026-07-24** with the rest of the suite.
 
 ---
 
@@ -68,9 +71,13 @@ settles); ONE QA step at a time; the secure-frame / out-of-combat caution is MIN
 - (b) Rewrite **CLAUDE.md** — its "pure skin v1 / settled decisions" block is STALE (layout built, profiles
   exist, pet/stance skinned+laid-out, no-"v1" rule, secure-geometry now in play, RefreshAll combat-gated).
   Offered across several sessions, not yet done.
-- (c) **Release tag** — last shipped v0.2.0; sessions 9–15 all unshipped. A LOT of unshipped work
-  (animations, plate, profiles, layout, 3-panel, minimap, pet/stance, preset-focus highlight, the two
-  in-play bug fixes). Bugs are now clean → a tag is warranted whenever the owner wants to cut one.
+- (c) **Release tag — CLOSED 2026-07-24 (suite Phase G): `v1.0.0` shipped.** It carried everything that
+  had piled up unshipped since v0.2.0 (animations, plate, profiles, layout, 3-panel, minimap, pet/stance,
+  preset-focus highlight, the two in-play bug fixes) **plus the Phase C tab migration**.
+  ⚠ **The old published `v0.2.0` was tagged at a PRE-Phase-C commit** — two Lua files, no config UI, no
+  `## Dependencies: GloomsHub`. It was three phases stale, not merely "unshipped work behind it".
+  **Check what a tag POINTS AT, not just that it exists.** Suite-wide release state:
+  `~/GloomsHub/docs/SUITE-STATE.md`.
 - (d) **Modifier symbols (⌘⇧⌃⌥) don't take outline/shadow — DEFERRED but the owner wants it.** They're inline PNG
   textures (Skin.lua MOD_ICON), which WoW can't outline/shadow, and a single FontString can't mix fonts.
   The approved path: render the symbols as their OWN separate FontString in a glyph font overlaid next to the
@@ -309,7 +316,8 @@ so no re-assert war. Applies to ALL bars (general gap, tall shapes just expose i
 1. **The 3 OPEN BUGS** (top of file): hidden-bars-return (#1, hardest — needs a re-show-path probe),
    pet autocast dot (#2, fix applied, just verify), pet-stance-glow-stuck-on-command (#3).
 2. **UI polish:** shadow-vs-position control order (bonkers), + other reorg readability.
-3. **CLAUDE.md rewrite** + **release tag** (once bugs are clean).
+3. **CLAUDE.md rewrite** + **release tag** (once bugs are clean). *(Both done since — the tag shipped as
+   `v1.0.0` on 2026-07-24 with the suite's Phase G.)*
 4. Anytime: overlay/sweep geometry on the smaller pet widget if it still reads off; custom family color picker.
 
 ## ★★★ SESSION 13 (2026-07-22) — NAME TEXT + FLYOUTS + PROFILES + THE WHOLE LAYOUT PHASE. ALL QA'd.
@@ -983,8 +991,10 @@ square. These are soft/whole-image renders, not 9-sliced, so no floor problem. (
 - Repo root = addon folder, symlinked to `…/Interface/AddOns/GloomsBars`. BugSack installed.
 - GitHub: https://github.com/HandofDevastation/GloomsBars (public). Releases: tag push →
   BigWigs packager workflow → GitHub Release → WoWUp installs/updates via repo URL.
-  Shipped: v0.0.1, v0.1.0, v0.2.0 (pipeline + zip contents verified). `gh` CLI authorized
-  on the owner's machine (the org admin account, scopes repo/workflow/read:org).
+  Shipped: **`v1.0.0` (2026-07-24, latest)**, v0.2.0, v0.1.0, v0.0.1 — pipeline + zip contents verified
+  each time. ★ **Release state is a SUITE fact; the home of record is `~/GloomsHub/docs/SUITE-STATE.md`
+  (Phase G row) — check there rather than trusting this line.** `gh` CLI authorized on the owner's
+  machine (the org admin account, scopes repo/workflow/read:org/delete_repo).
 - Blizzard UI source for hook research: wow-ui-source `live` branch — clone matched the
   client exactly (commit "12.0.7 (68453)"). Re-clone when the client patches.
 - Siblings (read-only reference): GloomsAuras at `~/GloomsAuras` (config
@@ -1028,9 +1038,11 @@ geometry); bars 1–8 (pet/stance/extra later); standalone (no Masque); slash `/
 - **Proc glow (and any alert-driven overlay) must gate on OUR action buttons only** — Midnight's
   Cooldown Viewer frames ALSO fire the spell-alert manager and their geometry is a SECRET combat value
   (arithmetic on it taints + throws). `Glows.isOurs` (a set from `GB:ForEachButton`) is the gate.
-- **Standalone-consume LibSharedMedia** (no embed yet): `GB.GetLSM()` = `LibStub("LibSharedMedia-3.0",
-  true)`; we register our bundled fonts into it. Guaranteed present on the owner's client (BugSack et al.
-  embed it). Embedding via `.pkgmeta` is a future hardening step for standalone release robustness.
+- **Standalone-consume LibSharedMedia** (no embed): `GB.GetLSM()` = `LibStub("LibSharedMedia-3.0",
+  true)`; we register our bundled fonts into it. **Embedding it here is now settled as NOT-TO-DO
+  (2026-07-24, suite Phase G):** GB hard-depends on GloomsHub, and the Hub embeds LSM via its own
+  `.pkgmeta`, so the lib is guaranteed present by the dependency itself. A second embedded copy would be
+  the exact drift the suite exists to prevent. Same reasoning that dropped "embed LibGloomSkin per tool".
 
 **Settled decisions (2026-07-20, session 7 — do not reopen):**
 - **Cooldown edge + finish bling can't be shaped → suppressed; shaped finish flash replaces the bling.**
@@ -1450,7 +1462,8 @@ default white); (d) "on cooldown" tint was deliberately SKIPPED (the sweep alrea
 4. **Two-piece border** for continuous-OFF (frame icon + square plate as one outline).
 5. **Bar-layout / geometry-fork scope** decision (out-of-combat; taint).
 - Anytime: densify `PILL_RATIOS` if nearest-aspect snapping stretches caps; assist-frame border still base
-  art (low priority, the owner: don't iterate); embed LSM via `.pkgmeta` for standalone release robustness;
+  art (low priority, the owner: don't iterate); ~~embed LSM via `.pkgmeta`~~ (**dropped 2026-07-24** — the
+  Hub embeds it and GB hard-depends on the Hub; see the standalone-consume note above);
   coexistence QA with ArcUI/EQOL re-enabled (our `UpdateUsable`/range/icon-vertex work now touches the icon
   tint — watch for conflicts with other button decorators).
 
@@ -1469,5 +1482,8 @@ The owner chose to defer these to keep wiring the sub-panels; revisit after brea
 - Aspect-correct mask art for stretched constructions (corner distortion on tall shapes).
 - Count/Name per-style overrides; more layer kinds (border, badge, top plate).
 - Pet/stance/extra-action/vehicle bars; minimap button + icon art (`## IconTexture`).
-- WoWup install test on a second machine (NOT the owner's — would clobber the dev symlink).
-- Late-phase: coexistence QA with ArcUI/EQOL re-enabled; `.pkgmeta` externals when libs arrive.
+- ★ **WoWup install test on a second machine (NOT the owner's — would clobber the dev symlink).** This is
+  now the suite's ONE open Phase G QA item; the script lives in `~/GloomsHub/docs/HANDOFF.md`. The symlink
+  hazard is real and confirmed: all four AddOns entries point straight into the dev repos, so a WoWup
+  install on this machine writes over live source unless the symlinks are moved aside first.
+- Late-phase: coexistence QA with ArcUI/EQOL re-enabled.
