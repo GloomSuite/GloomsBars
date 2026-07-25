@@ -241,7 +241,8 @@ The repo root **is** the addon folder, symlinked into the client at
 (non-developer): give **ONE copy-paste instruction at a time**, verify before claiming, and
 when something misbehaves ask for the **BugSack error text first**.
 **★ `/reload` is enough, including for NEW files (the owner, 2026-07-25)** — the old
-"new files/assets → FULL CLIENT RESTART" rule is RETIRED suite-wide. Home of record:
+"new files/assets → FULL CLIENT RESTART" rule is RETIRED suite-wide — **except FONTS, which
+WoW loads at launch and `/reload` genuinely cannot refresh.** Home of record:
 GloomsHub's `docs/HANDOFF.md` working agreement 6. See
 [[how-owner-works]] and [[dont-swirl-stabilize-early]].
 
