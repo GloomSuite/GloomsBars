@@ -1,10 +1,20 @@
-# Gloom's Bars — Shape Catalog (Phase 1, FROZEN 2026-07-20)
+# Gloom's Bars — Shape Catalog (the founding 21, frozen 2026-07-20 · all shipping)
 
-> The shaped-glow rebuild is run in three phases (see docs/HANDOFF.md): **(1) freeze this
+> The shaped-glow rebuild was run in three phases (see docs/HANDOFF.md): **(1) freeze this
 > catalog → (2) accounting of every Blizzard button visual (docs/EFFECTS-MATRIX.md) → (3)
-> systematic per-shape implementation.** This file is Phase 1, FROZEN with the owner 2026-07-20 —
-> do not reopen without him. Every effect in Phase 3 is generated from a shape's SINGLE
-> silhouette so the icon + glow + ring + sweep + cast fill + flash can't mismatch.
+> systematic per-shape implementation.** All three are DONE — every shape below is authored and
+> shipping. Every effect is generated from a shape's SINGLE silhouette so the icon + glow + ring +
+> sweep + cast fill + flash can't mismatch.
+>
+> ## ★ WHAT "FROZEN" DOES AND DOESN'T MEAN (clarified with the owner, 2026-07-25)
+> The freeze was about **not re-litigating the founding 21 mid-build** — their geometry, their
+> curvatures, and the removal of free width/height. **It was never a ban on adding shapes.** The
+> "fun shapes = a later batch" line at the bottom of this file is exactly that door.
+> **Adding a 22nd shape is a supported, routine operation** — the complete step-by-step procedure
+> (art, the three generators, the code edits, the two conditional edits) lives in
+> **[ART-SPEC.md](ART-SPEC.md) → "ADDING A NEW SHAPE"**, verified against the code 2026-07-25.
+> What still must not be reopened without the owner: the **core decision** below (no free
+> width/height — one silhouette + one uniform size scale) and the existing 21's geometry.
 
 ## Core decision
 - **Free width/height controls are REMOVED.** Icons are a preset silhouette + one **uniform
@@ -12,8 +22,11 @@
   nearest-ratio-snapping system (sessions 3–4): its runtime stretching is the root cause of
   the glow/overlay mismatch, and a fixed catalog makes every overlay authorable-perfect.
 
-## The 21 silhouettes
-Each silhouette is baked at its exact geometry; Phase 3 generates its full effect set from it.
+## The founding 21 silhouettes
+Each silhouette is baked at its exact geometry; its full effect set is generated from it.
+**Counts below describe the founding set — update them when a shape is added.** The live list is
+`HAND_DEF` in `Core.lua` (~line 90) and the picker grouping is `GB.HAND_GROUPS` (~line 123); if this
+file and the code ever disagree, **the code is right**.
 
 **1:1 footprint (9):**
 | Shape | Count | Note |
@@ -54,4 +67,7 @@ Each silhouette is baked at its exact geometry; Phase 3 generates its full effec
 - Rounded-square curvatures stay **below full-pill**; "pill" is the fully-rounded end of the
   elongated rounding spectrum.
 - "Fun" shapes beyond the above (e.g. teardrop, shield, octagon) = a later batch; not in the
-  frozen core.
+  frozen core. **★ That batch is OPEN, not deferred-forever** — the pipeline for adding one is
+  documented and verified in [ART-SPEC.md](ART-SPEC.md) → "ADDING A NEW SHAPE". A new 1:1 shape is
+  the cheapest kind: 3 drawn PNGs, 3 generator commands, 2 small edits in `Core.lua`, `/reload`.
+  Elongated shapes cost 1–2 extra edits (flyout sibling; plate half-swipes at 2:1 portrait).
