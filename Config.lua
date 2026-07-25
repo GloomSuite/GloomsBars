@@ -7,326 +7,60 @@
 -- bottom glow, Khand uppercase headers + GeneralSans body, sliding toggles. The
 -- toolkit mirrors GloomsAuras/Config.lua so the siblings feel identical.
 --
--- Increment 1 (this file): the window shell + toolkit + one-open accordion, the
--- master Enable switch (wired live to GB.Skin), and a working shape picker. The
--- remaining sections are stubbed headers — each gets wired to the skin engine in
--- following passes. Opens with /gb.
+-- Phase C (suite migration): the standalone window is GONE. This file now
+-- registers the BARS tab of the Suite window (GloomsHub:RegisterTab, bottom of
+-- this file) and consumes the shared LibGloomSkin-1.0 toolkit instead of its
+-- old local copy. The section builders are unchanged. Opens with /gb.
 
 local GB = _G.GloomsBars
 
 local C = {}
 GB.Config = C
 
-local COLOR, FONT = GB.COLOR, GB.FONT
-local TEXT = { r = 0.90, g = 0.92, b = 0.96 }   -- body text
-local MUTE = { r = 0.55, g = 0.57, b = 0.63 }   -- hints / secondary
-local DEFAULT_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
-local CARET_TEX = GB.MEDIA .. "ui\\caret.png"
-local CARET_DOWN = -math.pi / 2                 -- rotate right-pointing source to point down (open)
-local WHITE = "Interface\\Buttons\\WHITE8X8"
+-- --------------------------------------------------------------------------
+-- Skin toolkit + tokens — CONSUMED from LibGloomSkin-1.0 (the shared lib
+-- shipped by GloomsHub, our hard dependency, so it is always loaded first).
+-- The local names mirror the old GB-local copies exactly, so the section
+-- builders below read unchanged. FONT here = the Hub's font paths (pre-warmed
+-- against the cold-pair blank-text quirk); the bar ENGINE keeps GB.FONT (GB's
+-- own paths) — see Core.lua. Surface pinned in GloomsHub/docs/CONTRACTS.md §4.
+-- --------------------------------------------------------------------------
+local Skin = LibStub("LibGloomSkin-1.0")
+local UI = Skin.UI
+local COLOR, FONT = Skin.COLOR, Skin.FONT
+local TEXT, MUTE = COLOR.text, COLOR.mute       -- lib tokens (promoted from the old locals)
+local CARET_TEX = UI.CARET                      -- the Hub's caret art (the one copy)
+local CARET_DOWN = UI.CARET_DOWN                -- rotate right-pointing source to point down (open)
+
+local setFont, newText, addEdges = UI.setFont, UI.newText, UI.addEdges
+local skinPlate, hLine = UI.skinPlate, UI.hLine
+local flatButton, makeToggle, flatEditBox = UI.flatButton, UI.makeToggle, UI.flatEditBox
+local sliderRow, colorSwatch, dirRow = UI.sliderRow, UI.colorSwatch, UI.dirRow
+local makeScrollbar, attachTip = UI.makeScrollbar, UI.attachTip
+
+-- Every (Hub font, size) pair this tab draws BEYOND the Hub's own warm list —
+-- a cold (font file, size) pair renders BLANK on its first draw each session
+-- (CONTRACTS §4). Queued now; warmed with the Hub's batch at PLAYER_ENTERING_WORLD.
+UI.RegisterWarmPairs({
+  { FONT.title, 17 }, { FONT.title, 18 },   -- name-dialog / Quick Keybind titles
+  { FONT.head, 12 }, { FONT.head, 13 },     -- rail headers / POSITION-style subheads
+  { FONT.body, 9.5 }, { FONT.body, 10 }, { FONT.body, 12.5 },   -- bispeed end labels / preview caption / footer enable label
+  { FONT.label, 10 }, { FONT.label, 10.5 }, { FONT.label, 11 }, -- group titles / caption links / slider values
+})
 
 -- --------------------------------------------------------------------------
--- Skin toolkit (ported from GloomsAuras/Config.lua — same primitives).
+-- The Bars tab + one-open accordion
 -- --------------------------------------------------------------------------
-local function setFont(fs, path, size, flags)
-  if not fs:SetFont(path, size, flags or "") then fs:SetFont(DEFAULT_FONT, size, flags or "") end
-end
-
-local function newText(parent, font, size, cc, justify)
-  local fs = parent:CreateFontString(nil, "OVERLAY")
-  setFont(fs, font, size)
-  if cc then fs:SetTextColor(cc.r, cc.g, cc.b) end
-  fs:SetJustifyH(justify or "LEFT")
-  return fs
-end
-
--- Four 1px edge textures forming a squared border.
-local function addEdges(f, cc, thick)
-  thick = thick or 1
-  local function edge(p1, p2, w, h)
-    local t = f:CreateTexture(nil, "OVERLAY")
-    t:SetColorTexture(cc.r, cc.g, cc.b, cc.a or 1)
-    t:SetPoint(p1); t:SetPoint(p2)
-    if w then t:SetWidth(w) end
-    if h then t:SetHeight(h) end
-    return t
-  end
-  edge("TOPLEFT", "TOPRIGHT", nil, thick)
-  edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, thick)
-  edge("TOPLEFT", "BOTTOMLEFT", thick, nil)
-  edge("TOPRIGHT", "BOTTOMRIGHT", thick, nil)
-end
-
--- Flat dark fill (renders #060714 on screen; the pre-compensated token is in Core.lua).
-local function skinPlate(f)
-  local base = f:CreateTexture(nil, "BACKGROUND")
-  base:SetAllPoints()
-  base:SetColorTexture(COLOR.dark.r, COLOR.dark.g, COLOR.dark.b, COLOR.dark.a or 1)
-  return base
-end
-
--- 1px rim line (horizontal divider by default).
-local function hLine(parent, yFromTop)
-  local t = parent:CreateTexture(nil, "ARTWORK")
-  t:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  t:SetHeight(1)
-  return t
-end
-
--- Flat, alpha-driven button. Opacity is the only state: _base (50%) vs active
--- (100%); hover brightens. Colour stays fully opaque.
--- ★ Consistent button state colour (the owner): PURPLE when off/unselected, ORANGE
--- when on/selected — for EVERY flatButton. The off colour is the button's own
--- creation colour (all are purple-family: heroic/purple); active repaints ORANGE.
-local function flatButton(parent, w, h, cc, label, size)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(w, h)
-  b._base, b._active = 0.5, false
-  b._offColor = cc                       -- restored when inactive
-  b.fill = b:CreateTexture(nil, "BACKGROUND")
-  b.fill:SetAllPoints(); b.fill:SetColorTexture(cc.r, cc.g, cc.b, 1); b.fill:SetAlpha(b._base)
-  b.text = newText(b, FONT.bodyM, size or 12, { r = 1, g = 1, b = 1 }, "CENTER")
-  b.text:SetPoint("CENTER")
-  b:SetFontString(b.text)
-  if label then b.text:SetText(label) end
-  local function level() return b._active and 1 or b._base end
-  local function paint()   -- fill colour follows state: orange active, off-colour otherwise
-    local c = b._active and COLOR.orange or b._offColor
-    b.fill:SetColorTexture(c.r, c.g, c.b, 1); b.fill:SetAlpha(level())
-  end
-  b:SetScript("OnEnter", function(self) if self:IsEnabled() and not self._active then self.fill:SetAlpha(math.min(1, self._base + 0.25)) end end)
-  b:SetScript("OnLeave", function(self) paint() end)
-  b:SetScript("OnDisable", function(self) self.fill:SetAlpha(0.2); self.text:SetTextColor(0.5, 0.5, 0.5) end)
-  b:SetScript("OnEnable", function(self) paint(); self.text:SetTextColor(1, 1, 1) end)
-  function b:SetActive(a) self._active = a and true or false; paint() end
-  function b:SetBase(a) self._base = a; paint() end
-  return b
-end
-
--- Sliding on/off toggle — 40x20, white-10% track, square purple knob that snaps
--- flush-left (off) / flush-right (on). Position is the only state signal.
-local function makeToggle(parent, get, set)
-  local t = CreateFrame("Button", nil, parent)
-  t:SetSize(40, 20)
-  local track = t:CreateTexture(nil, "BACKGROUND"); track:SetAllPoints(); track:SetColorTexture(1, 1, 1, 0.10)
-  local knob = t:CreateTexture(nil, "ARTWORK"); knob:SetSize(20, 20)
-  knob:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 1)
-  function t:refresh() knob:ClearAllPoints(); knob:SetPoint(get() and "RIGHT" or "LEFT", 0, 0) end
-  t:SetScript("OnClick", function() set(not get()); t:refresh() end)
-  t:refresh()
-  return t
-end
-
--- A labelled slider row: label (left) + value (right) over a thin purple-bar
--- thumb on a heroic-20 track (the family look). get/set drive it live; fmt
--- renders the value text. Returns { refresh } for C:Refresh.
-local function sliderRow(parent, yTop, labelText, minV, maxV, step, get, set, fmt, sub)
-  local lab = newText(parent, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 18, yTop); lab:SetText(labelText)
-  local val = newText(parent, FONT.label, 11, TEXT, "RIGHT"); val:SetPoint("TOPRIGHT", -18, yTop)
-  -- Optional muted sub-label under the title (mock detail, e.g. "how far the
-  -- highlight spreads") — when present the slider drops below it (taller row).
-  local subLab
-  local sliderY = yTop - 15
-  if sub then
-    subLab = newText(parent, FONT.body, 10.5, MUTE, "LEFT")
-    subLab:SetPoint("TOPLEFT", 18, yTop - 15); subLab:SetText(sub)
-    sliderY = yTop - 30
-  end
-  -- The Slider FRAME is a tall, full-width hit area (easy to grab); the visible
-  -- track is a thin bar centered in it, so the look is unchanged but the grab
-  -- target isn't just the 5px thumb (the owner QA 2026-07-19).
-  local sl = CreateFrame("Slider", nil, parent)
-  sl:SetPoint("TOPLEFT", 18, sliderY); sl:SetPoint("TOPRIGHT", -18, sliderY); sl:SetHeight(16)
-  sl:EnableMouse(true)
-  sl:SetOrientation("HORIZONTAL"); sl:SetMinMaxValues(minV, maxV); sl:SetValueStep(step); sl:SetObeyStepOnDrag(true)
-  local track = sl:CreateTexture(nil, "BACKGROUND")
-  track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(6)   -- thin visual bar, vertically centered
-  track:SetColorTexture(COLOR.heroic.r, COLOR.heroic.g, COLOR.heroic.b, 0.20)
-  local thumb = sl:CreateTexture(nil, "ARTWORK"); thumb:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 1)
-  thumb:SetSize(5, 20); sl:SetThumbTexture(thumb)
-  local applying = false
-  local function show(v) val:SetText(fmt and fmt(v) or tostring(v)) end
-  sl:SetScript("OnValueChanged", function(_, v) if not applying then set(v) end; show(v) end)
-  -- Click / drag ANYWHERE on the row seeks the value (map cursor X → min..max,
-  -- snap to step) — so you never have to land on the thin thumb.
-  local function seek(self)
-    local left, w = self:GetLeft(), self:GetWidth()
-    if not (left and w and w > 0) then return end
-    local frac = (GetCursorPosition() / self:GetEffectiveScale() - left) / w
-    frac = math.max(0, math.min(1, frac))
-    local v = minV + frac * (maxV - minV)
-    if step and step > 0 then v = minV + math.floor((v - minV) / step + 0.5) * step end
-    self:SetValue(v)
-  end
-  -- A drag STARTING ON THE THUMB belongs to the native slider alone: with our
-  -- seek also writing every frame, the two quantize the cursor differently
-  -- near step boundaries and the value flickers between neighbours (the owner:
-  -- "blurs" — worst on wide ranges like Gap's 0–64). Off-thumb, seek owns it.
-  sl:SetScript("OnMouseDown", function(self)
-    if not self:IsEnabled() then return end
-    local left, w = self:GetLeft(), self:GetWidth()
-    if left and w and w > 0 then
-      local cx = GetCursorPosition() / self:GetEffectiveScale()
-      local mn, mx = self:GetMinMaxValues()
-      local tx = left + ((self:GetValue() - mn) / math.max(mx - mn, 1e-6)) * w
-      if math.abs(cx - tx) <= 8 then return end   -- on the thumb → native drag
-    end
-    self._seek = true; seek(self)
-  end)
-  sl:SetScript("OnMouseUp", function(self) self._seek = false end)
-  sl:SetScript("OnUpdate", function(self)
-    if self._seek then
-      if self:IsEnabled() and IsMouseButtonDown("LeftButton") then seek(self) else self._seek = false end
-    end
-  end)
-  local row = {}
-  function row:refresh() applying = true; local v = get() or minV; sl:SetValue(v); show(v); applying = false end
-  function row:setEnabled(on) sl:SetEnabled(on); sl:SetAlpha(on and 1 or 0.35) end
-  function row:SetShown(on) lab:SetShown(on); val:SetShown(on); sl:SetShown(on); if subLab then subLab:SetShown(on) end end
-  row:refresh()
-  return row
-end
-
--- Color swatch — a solid button that opens the game ColorPickerFrame (modern
--- SetupColorPickerAndShow API, present on this client, with a fallback). Returns
--- { swatch, refresh }.
-local function colorSwatch(parent, get, set, withAlpha)
-  local sw = CreateFrame("Button", nil, parent); sw:SetSize(28, 20)
-  local tex = sw:CreateTexture(nil, "ARTWORK"); tex:SetAllPoints()
-  addEdges(sw, COLOR.rim, 1)
-  -- The swatch shows the hue at full opacity (its alpha lives on the target, e.g.
-  -- the border) so a near-transparent colour stays visible/clickable here.
-  local function update() local c = get() or { 1, 1, 1 }; tex:SetColorTexture(c[1] or 1, c[2] or 1, c[3] or 1, 1) end
-  sw:SetScript("OnClick", function()
-    local c = get() or { 1, 1, 1 }
-    local function apply()
-      local r, g, b = ColorPickerFrame:GetColorRGB()
-      if withAlpha then
-        local a = ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or 1
-        set({ r, g, b, a })
-      else
-        set({ r, g, b })
-      end
-      update()
-    end
-    local info = { hasOpacity = withAlpha or false, opacity = withAlpha and (c[4] or 1) or nil,
-      r = c[1], g = c[2], b = c[3], swatchFunc = apply, opacityFunc = apply }
-    if ColorPickerFrame.SetupColorPickerAndShow then ColorPickerFrame:SetupColorPickerAndShow(info)
-    else ColorPickerFrame.func = apply; ColorPickerFrame:SetColorRGB(c[1], c[2], c[3]); ColorPickerFrame:Show() end
-  end)
-  update()
-  local row = { swatch = sw }
-  function row:refresh() update() end
-  return row
-end
-
--- A 4-way direction picker: label (left) + Up/Down/Left/Right buttons (right),
--- the current one highlighted (flatButton active = full opacity). get() returns
--- "up"|"down"|"left"|"right"; set(dir) writes it. Reused by the gradient fill and
--- the two-tone border (and, later, the cast-fill direction). Returns { refresh, setEnabled }.
-local DIR_CHOICES = { { "up", "Up" }, { "down", "Down" }, { "left", "Left" }, { "right", "Right" } }
-local function dirRow(parent, yTop, labelText, get, set)
-  local lab = newText(parent, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 18, yTop); lab:SetText(labelText)
-  local btns, prev = {}, nil
-  for i = #DIR_CHOICES, 1, -1 do            -- lay out right-to-left so Up is leftmost
-    local d = DIR_CHOICES[i]
-    local b = flatButton(parent, 40, 22, COLOR.heroic, d[2], 11)
-    if prev then b:SetPoint("TOPRIGHT", prev, "TOPLEFT", -4, 0)
-    else b:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -18, yTop + 1) end
-    b:SetScript("OnClick", function() set(d[1]); for _, e in ipairs(btns) do e.b:SetActive(e.d == get()) end end)
-    btns[#btns + 1] = { b = b, d = d[1] }
-    prev = b
-  end
-  local row = {}
-  function row:refresh() local cur = get(); for _, e in ipairs(btns) do e.b:SetActive(e.d == cur) end end
-  function row:setEnabled(on) for _, e in ipairs(btns) do e.b:SetEnabled(on) end; lab:SetAlpha(on and 1 or 0.35) end
-  row:refresh()
-  return row
-end
-
--- A thin custom scrollbar for a ScrollFrame (family look; no Blizzard widget) with
--- the ORANGE section-caret thumb. Track + draggable thumb + click/drag-anywhere-on-
--- the-track to jump (the same QOL the sliders got) + wheel over the bar. The thumb
--- auto-sizes to the live scroll range via OnUpdate — which pauses while the parent
--- is hidden, so it costs nothing when the window/flyout is closed. `place(sb)` lets
--- the caller anchor + inset the bar. Returns the bar frame with :Sync() to force an
--- immediate thumb refresh (for opening pre-scrolled). Reuse this for every scrollbar.
-local function makeScrollbar(parent, scroll, place)
-  local sb = CreateFrame("Frame", nil, parent)
-  place(sb); sb:SetWidth(4)
-  local track = sb:CreateTexture(nil, "BACKGROUND"); track:SetAllPoints(); track:SetColorTexture(1, 1, 1, 0.06)
-  local thumb = CreateFrame("Button", nil, sb); thumb:SetWidth(4); thumb:SetPoint("TOP", 0, 0)
-  local thumbTex = thumb:CreateTexture(nil, "ARTWORK"); thumbTex:SetAllPoints()
-  local ALPHA = 0.85
-  thumbTex:SetColorTexture(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b, ALPHA)
-  thumb:SetScript("OnEnter", function() thumbTex:SetAlpha(1) end)
-  thumb:SetScript("OnLeave", function() thumbTex:SetAlpha(ALPHA) end)
-
-  local function syncThumb()
-    local range = scroll:GetVerticalScrollRange()
-    local trackH = sb:GetHeight()
-    if range <= 0.5 or trackH <= 0 then thumb:Hide(); return end
-    thumb:Show()
-    local visible = scroll:GetHeight()
-    local th = math.max(24, trackH * visible / (visible + range))
-    thumb:SetHeight(th)
-    local scrolled = math.min(range, math.max(0, scroll:GetVerticalScroll()))
-    thumb:ClearAllPoints(); thumb:SetPoint("TOP", sb, "TOP", 0, -(scrolled / range) * (trackH - th))
-  end
-  -- Map the cursor's Y within the track → scroll fraction (click-to-jump).
-  local function seek()
-    local range = scroll:GetVerticalScrollRange()
-    local top, trackH = sb:GetTop(), sb:GetHeight()
-    if range <= 0 or not top or trackH <= 0 then return end
-    local _, cy = GetCursorPosition(); cy = cy / sb:GetEffectiveScale()
-    scroll:SetVerticalScroll(math.max(0, math.min(1, (top - cy) / trackH)) * range)
-  end
-
-  sb:EnableMouse(true); sb:EnableMouseWheel(true)
-  sb:SetScript("OnMouseWheel", function(_, delta)
-    local range = scroll:GetVerticalScrollRange()
-    scroll:SetVerticalScroll(math.max(0, math.min(range, scroll:GetVerticalScroll() - delta * 42)))
-  end)
-  sb:SetScript("OnMouseDown", function(self) self._seeking = true; seek() end)
-  sb:SetScript("OnMouseUp", function(self) self._seeking = false end)
-  sb:SetScript("OnUpdate", function(self)
-    if self._seeking then
-      if IsMouseButtonDown("LeftButton") then seek() else self._seeking = false end
-    end
-    syncThumb()
-  end)
-
-  thumb:SetScript("OnMouseDown", function(self)
-    local _, cy = GetCursorPosition()
-    self.grabY, self.grabScroll, self.grabbing = cy, scroll:GetVerticalScroll(), true
-  end)
-  thumb:SetScript("OnMouseUp", function(self) self.grabbing = false end)
-  thumb:SetScript("OnUpdate", function(self)
-    if not self.grabbing then return end
-    if not IsMouseButtonDown("LeftButton") then self.grabbing = false; return end
-    local range = scroll:GetVerticalScrollRange()
-    local usable = sb:GetHeight() - self:GetHeight()
-    if usable <= 0 or range <= 0 then return end
-    local _, cy = GetCursorPosition()
-    local dy = (self.grabY - cy) / sb:GetEffectiveScale()
-    scroll:SetVerticalScroll(math.max(0, math.min(range, self.grabScroll + (dy / usable) * range)))
-  end)
-
-  sb.Sync = syncThumb
-  return sb
-end
-
--- --------------------------------------------------------------------------
--- Window shell + one-open accordion
--- --------------------------------------------------------------------------
--- Three panels (the owner, session 14): profile + preset selection on the LEFT
+-- Phase C: this UI mounts as the BARS tab of the Suite window — the shell
+-- hands BuildTab a `container` sized to the content area, and the tab keeps
+-- its OWN footer row (the controls from the old window footer; CONTRACTS §2).
+-- Three panes (the owner, session 14): profile + preset selection on the LEFT
 -- (always visible — it decides what everything else edits), the control
--- accordion in the MIDDLE (widest), the preview pane on the RIGHT.
+-- accordion in the MIDDLE (widest — it absorbs any extra shell width), the
+-- preview pane on the RIGHT.
 local RAIL_W = 200               -- left rail: profile + preset selection
 local PREVIEW_W = 210            -- right preview pane width
-local PANEL_W, PANEL_H = RAIL_W + 410 + PREVIEW_W, 640   -- middle = 401 body + 9 scrollbar gutter
-local TITLE_DIV_Y = -48          -- title bar divider
-local FOOTER_H = 52              -- footer strip height (divider sits here above bottom)
+local FOOTER_H = 52              -- the tab's own footer row (master enable etc.)
 local SECTION_HDR_H = 36
 -- Padding-compensation for our masks (matches Skin.lua GROW_RATIO / the 240/256
 -- edge-padding rule) + the state-ring inset fit; kept local so the preview uses
@@ -337,7 +71,7 @@ local GROW_RATIO = (256 / 240 - 1) / 2
 -- the caption (max construction ≈ 104 + 0.9·104 ≈ 198px, so ±99 clears both).
 local PREVIEW_CENTER_Y = -290    -- pushed down for the 7-row state-chip grid (session 12)
 
-local panel, bodyContainer, contentScroll   -- contentScroll: the middle accordion's scroll frame (for scroll-to-top on open)
+local container, bodyContainer, contentScroll   -- container: the shell-provided Bars tab frame; contentScroll: the middle accordion's scroll frame (for scroll-to-top on open)
 local sections = {}
 local previewFrame, previewIcon, previewMask, previewGlow, previewRing, previewCD
 local previewBorder, previewBorderMask, previewCaption, previewCaptionHead, previewCaptionLinks
@@ -381,9 +115,10 @@ end
 local fontFlyout
 local function fontFlyoutFrame()
   if fontFlyout then return fontFlyout end
-  -- Full-screen catcher (child of the panel, so it auto-hides with it) at a
-  -- strata ABOVE the DIALOG panel → any click outside the flyout closes it.
-  local catcher = CreateFrame("Button", nil, panel)
+  -- Full-screen catcher (child of the Bars container, so it auto-hides with
+  -- the tab AND the window) at a strata ABOVE the DIALOG shell → any click
+  -- outside the flyout closes it.
+  local catcher = CreateFrame("Button", nil, container)
   catcher:SetFrameStrata("FULLSCREEN"); catcher:SetAllPoints(UIParent); catcher:Hide()
   local fly = CreateFrame("Frame", nil, catcher)
   fly:SetFrameStrata("FULLSCREEN_DIALOG"); fly:SetSize(210, 300)
@@ -428,7 +163,7 @@ local function openFontFlyout(anchor, current, onPick)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", 0, y); row:SetPoint("TOPRIGHT", 0, y)
     row.text:SetText(name)
-    if not row.text:SetFont(fontPath(name), 14, "") then row.text:SetFont(GB.FONT.body, 13, "") end
+    if not row.text:SetFont(fontPath(name), 14, "") then row.text:SetFont(FONT.body, 13, "") end
     if name == current then row.text:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b)
     else row.text:SetTextColor(1, 1, 1) end
     row:SetScript("OnClick", function() fly.catcher:Hide(); onPick(name) end)
@@ -619,19 +354,7 @@ local function makeSection(title, build)
   return s
 end
 
--- Flat text input (ported from GloomsAuras Config.lua — the family pattern):
--- no Blizzard template, faint purple fill + brighter fill on focus, no border.
-local function flatEditBox(parent, w, h)
-  local e = CreateFrame("EditBox", nil, parent)
-  e:SetSize(w, h); e:SetAutoFocus(false)
-  setFont(e, FONT.body, 12); e:SetTextColor(TEXT.r, TEXT.g, TEXT.b)
-  e:SetTextInsets(6, 6, 0, 0)
-  local bg = e:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
-  bg:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 0.10)
-  e:SetScript("OnEditFocusGained", function() bg:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 0.22) end)
-  e:SetScript("OnEditFocusLost",  function() bg:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 0.10) end)
-  return e
-end
+-- (flatEditBox comes from LibGloomSkin — see the toolkit block at the top.)
 
 -- Small skinned text-entry dialog (GloomsAuras pattern — avoids StaticPopup's
 -- default chrome). onAccept(name) fires on OK / Enter; ESC closes.
@@ -670,32 +393,8 @@ local function OpenNameDialog(titleText, initial, onAccept)
   nameDlgBox:SetFocus(); nameDlgBox:HighlightText()
 end
 
--- Family-styled hover tooltip (dark plate, purple title, GeneralSans body —
--- the name-dialog language; GameTooltip's Blizzard chrome clashes with the
--- panel). One shared frame; attachTip(frame, title, body) wires OnEnter/
--- OnLeave via HookScript so it coexists with existing hover scripts.
-local tipFrame, tipTitle, tipBody
-local function showTip(owner, title, body)
-  if not tipFrame then
-    tipFrame = CreateFrame("Frame", nil, UIParent)
-    tipFrame:SetFrameStrata("TOOLTIP")
-    skinPlate(tipFrame)
-    tipTitle = newText(tipFrame, FONT.bodyM, 12, COLOR.purple, "LEFT")
-    tipTitle:SetPoint("TOPLEFT", 10, -8)
-    tipBody = newText(tipFrame, FONT.body, 11, TEXT, "LEFT")
-    tipBody:SetPoint("TOPLEFT", 10, -26); tipBody:SetWidth(220); tipBody:SetJustifyH("LEFT")
-  end
-  tipTitle:SetText(title or "")
-  tipBody:SetText(body or "")
-  tipFrame:ClearAllPoints()
-  tipFrame:SetPoint("BOTTOMRIGHT", owner, "TOPRIGHT", 0, 4)
-  tipFrame:SetSize(240, 34 + tipBody:GetStringHeight())
-  tipFrame:Show()
-end
-local function attachTip(f, title, body)
-  f:HookScript("OnEnter", function() showTip(f, title, body) end)
-  f:HookScript("OnLeave", function() if tipFrame then tipFrame:Hide() end end)
-end
+-- (attachTip — the family-styled hover tooltip — comes from LibGloomSkin;
+-- see the toolkit block at the top.)
 
 -- ---------------------------------------------------------------------------
 -- Quick keybind launcher (phase L4) — opens Blizzard's quick-bind flow (their
@@ -772,7 +471,10 @@ end
 local function openQuickKeybind()
   if InCombatLockdown() then GB.msg("quick keybind needs you out of combat."); return end
   if GB.Layout and GB.Layout.MoveModeOn and GB.Layout:MoveModeOn() then GB.Layout:SetMoveMode(false) end
-  if panel then panel:Hide() end
+  -- Close the Suite window (the editor is its Bars tab now) so the quick-bind
+  -- flow has the screen. GloomsSuiteWindow is the shell's named frame.
+  local suite = _G.GloomsSuiteWindow
+  if suite and suite:IsShown() then suite:Hide() end
   local f = QuickKeybindFrame
   if not f then GB.msg("Quick keybind isn't available in this client."); return end
   if not f.gbHideHooked then
@@ -2272,7 +1974,7 @@ function C:RefreshPreview()
     previewRetryPending = true
     C_Timer.After(0, function()
       previewRetryPending = nil
-      if panel and panel:IsShown() then C:RefreshPreview() end
+      if container and container:IsVisible() then C:RefreshPreview() end
     end)
   end
 end
@@ -2380,7 +2082,7 @@ function C:SetPreviewState(st)
         -- attach silently failed (§2) — re-attach one frame later.
         f.everShown = true
         C_Timer.After(0, function()
-          if panel and panel:IsShown() then local st = previewState; C:RefreshPreview(); C:SetPreviewState(st) end
+          if container and container:IsVisible() then local st = previewState; C:RefreshPreview(); C:SetPreviewState(st) end
         end)
       end
     else
@@ -2555,7 +2257,7 @@ end
 local animFlyout
 local function animFlyoutFrame()
   if animFlyout then return animFlyout end
-  local catcher = CreateFrame("Button", nil, panel)
+  local catcher = CreateFrame("Button", nil, container)
   catcher:SetFrameStrata("FULLSCREEN"); catcher:SetAllPoints(UIParent); catcher:Hide()
   local fly = CreateFrame("Frame", nil, catcher)
   fly:SetFrameStrata("FULLSCREEN_DIALOG"); skinPlate(fly); addEdges(fly, COLOR.rim, 1)
@@ -2707,7 +2409,7 @@ end
 -- hidden. Management (new/copy/rename/delete) lives here too.
 local function buildRailPane(parent)
   local rail = CreateFrame("Frame", nil, parent)
-  rail:SetPoint("TOPLEFT", 0, TITLE_DIV_Y - 1)
+  rail:SetPoint("TOPLEFT", 0, 0)
   rail:SetPoint("BOTTOMLEFT", 0, FOOTER_H)
   rail:SetWidth(RAIL_W)
 
@@ -2837,7 +2539,7 @@ local function buildRailPane(parent)
     -- (no-op if the highlight is off).
     if GB.Skin and GB.Skin.RefreshPresetHighlight then GB.Skin:RefreshPresetHighlight() end
   end
-  parent._railRefresh = railRefresh
+  C._railRefresh = railRefresh
 end
 
 -- Bar layout (phase L1+L2) — Gloom's Bars owns bar geometry PER BAR, opt-in;
@@ -3129,7 +2831,7 @@ end
 
 local function buildPreviewPane(parent)
   local pane = CreateFrame("Frame", nil, parent)
-  pane:SetPoint("TOPRIGHT", 0, TITLE_DIV_Y - 1)
+  pane:SetPoint("TOPRIGHT", 0, 0)
   pane:SetPoint("BOTTOMRIGHT", 0, FOOTER_H)
   pane:SetWidth(PREVIEW_W)
 
@@ -3253,59 +2955,26 @@ local function buildPreviewPane(parent)
   capFrame:SetAllPoints(links)   -- the click surface tracks the list's rect
 end
 
-local function BuildPanel()
-  panel = CreateFrame("Frame", "GloomsBarsConfig", UIParent)
-  panel:SetSize(PANEL_W, PANEL_H)
-  panel:SetPoint("CENTER")
-  panel:SetFrameStrata("DIALOG")
-  panel:EnableMouse(true)
-  panel:SetMovable(true); panel:SetClampedToScreen(true)
-  skinPlate(panel)
-  -- Signature warm bottom glow: orange gradient fading up over the lower ~55%.
-  local glow = panel:CreateTexture(nil, "BORDER")
-  glow:SetTexture(WHITE)
-  glow:SetPoint("BOTTOMLEFT", 1, 1); glow:SetPoint("BOTTOMRIGHT", -1, 1); glow:SetHeight(PANEL_H * 0.55)
-  glow:SetGradient("VERTICAL",
-    CreateColor(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b, 0.11),
-    CreateColor(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b, 0))
-  addEdges(panel, COLOR.rim, 1)
+-- Phase C: the standalone window (GloomsBarsConfig — chrome, title bar, drag,
+-- glow, edges, UISpecialFrames entry) is DELETED. The shell owns the window;
+-- this builds the Bars tab's content INSIDE the shell-provided container.
+local function BuildTab(c)
+  container = c
 
-  -- Title bar: the Gb monogram (Media/ui/logo.png, 115×128 art shown at 25×28
-  -- — native aspect; the wordmark is cropped off — the title text IS the
-  -- wordmark here) left of the title.
-  local logo = panel:CreateTexture(nil, "ARTWORK")
-  logo:SetTexture(GB.MEDIA .. "ui\\logo.png")
-  logo:SetSize(25, 28)
-  logo:SetPoint("TOPLEFT", 14, -10)
-  local mark = newText(panel, FONT.title, 21, { r = 1, g = 1, b = 1 }, "LEFT")
-  mark:SetPoint("LEFT", logo, "RIGHT", 9, 0); mark:SetText("GLOOM'S BARS")
-  local sub = newText(panel, FONT.head, 14, COLOR.purple, "LEFT")
-  sub:SetPoint("LEFT", mark, "RIGHT", 9, -1); sub:SetText("STYLE EDITOR")
-  local close = flatButton(panel, 22, 20, COLOR.heroic, "X", 12)
-  close:SetPoint("TOPRIGHT", -8, -13); close:SetScript("OnClick", function() panel:Hide() end)
-  local tdiv = panel:CreateTexture(nil, "ARTWORK"); tdiv:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  tdiv:SetHeight(1); tdiv:SetPoint("TOPLEFT", 0, TITLE_DIV_Y); tdiv:SetPoint("TOPRIGHT", 0, TITLE_DIV_Y)
-
-  -- Drag strip (title bar)
-  local drag = CreateFrame("Frame", nil, panel)
-  drag:SetPoint("TOPLEFT", 2, -2); drag:SetPoint("TOPRIGHT", -34, -2); drag:SetHeight(44)
-  drag:EnableMouse(true); drag:RegisterForDrag("LeftButton")
-  drag:SetScript("OnDragStart", function() if panel:IsMovable() then panel:StartMoving() end end)
-  drag:SetScript("OnDragStop", function() panel:StopMovingOrSizing() end)
-
-  -- Footer: divider + master enable toggle + profile placeholder
-  local fdiv = panel:CreateTexture(nil, "ARTWORK"); fdiv:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  fdiv:SetHeight(1); fdiv:SetPoint("BOTTOMLEFT", 0, FOOTER_H); fdiv:SetPoint("BOTTOMRIGHT", 0, FOOTER_H)
-  local enTog = makeToggle(panel,
+  -- The tab's own footer row: divider + the controls that lived in the old
+  -- standalone window's footer (CONTRACTS §2 — they move INTO the tab).
+  local fdiv = hLine(c)
+  fdiv:SetPoint("BOTTOMLEFT", 0, FOOTER_H); fdiv:SetPoint("BOTTOMRIGHT", 0, FOOTER_H)
+  local enTog = makeToggle(c,
     function() return GB.Skin and GB.Skin.enabled end,
     function(v) if not GB.Skin then return end; if v then GB.Skin:Enable() else GB.Skin:Disable() end end)
   enTog:SetPoint("BOTTOMLEFT", 16, 16)
-  local enLbl = newText(panel, FONT.body, 12.5, TEXT, "LEFT"); enLbl:SetPoint("LEFT", enTog, "RIGHT", 10, 0)
+  local enLbl = newText(c, FONT.body, 12.5, TEXT, "LEFT"); enLbl:SetPoint("LEFT", enTog, "RIGHT", 10, 0)
   enLbl:SetText("Enable Gloom's Bars")
-  panel._enableToggle = enTog
+  C._enableToggle = enTog
   -- Footer quick-keybind (the owner: reachable without digging into Bar layout).
   -- (The old footer profile switcher is gone — the left rail is always visible.)
-  local fqk = flatButton(panel, 110, 24, COLOR.heroic, "Quick Keybind", 11); fqk:SetBase(0.2)
+  local fqk = flatButton(c, 110, 24, COLOR.heroic, "Quick Keybind", 11); fqk:SetBase(0.2)
   fqk:SetPoint("BOTTOMRIGHT", -14, 14)
   fqk:SetScript("OnClick", openQuickKeybind)
   attachTip(fqk, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
@@ -3315,7 +2984,7 @@ local function BuildPanel()
   -- you can see/watch which bars your edits touch — persists with the window closed
   -- and in combat. Purple off → orange on (flatButton's SetActive); text flips
   -- OFF/ON. Left of Quick keybind. Built with SetBase(1) so the off purple is full.
-  local fhl = flatButton(panel, 246, 24, COLOR.purple, "Highlight Bars Using Current Preset: OFF", 11)
+  local fhl = flatButton(c, 246, 24, COLOR.purple, "Highlight Bars Using Current Preset: OFF", 11)
   fhl:SetBase(1)
   fhl:SetPoint("BOTTOMRIGHT", fqk, "BOTTOMLEFT", -8, 0)
   local function hlText(on) fhl.text:SetText("Highlight Bars Using Current Preset: " .. (on and "ON" or "OFF")) end
@@ -3326,12 +2995,12 @@ local function BuildPanel()
     hlSync(now)
   end)
   attachTip(fhl, "Highlight bars using current preset", "Puts a translucent block behind every bar that wears the preset you're currently editing, so it's clear which bars your changes affect — handy for watching live previews. Stays on with this window closed and through combat. Resets off when you log in.")
-  panel._hlToggle = fhl; panel._hlText = hlText; panel._hlSync = hlSync
+  C._hlSync = hlSync
 
   -- Footer Move bars (the owner: reachable from the footer too, like Quick keybind).
   -- Mirrors the Bar Layout section's button — same SetMoveMode toggle, same
   -- "Move Bars" ↔ "Lock Bars" next-action label. Purple off → orange on.
-  local fmv = flatButton(panel, 110, 24, COLOR.purple, "Move Bars", 11)
+  local fmv = flatButton(c, 110, 24, COLOR.purple, "Move Bars", 11)
   fmv:SetBase(1)
   fmv:SetPoint("BOTTOMRIGHT", fhl, "BOTTOMLEFT", -8, 0)
   local function mvSync()
@@ -3344,29 +3013,24 @@ local function BuildPanel()
     mvSync()
   end)
   attachTip(fmv, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
-  panel._mvFooter = fmv; panel._mvFooterSync = mvSync
-
-  -- Sync both footer toggles to live state whenever the window opens (each
-  -- persists / can change independently of the window).
-  panel:HookScript("OnShow", function()
-    if GB.Skin and GB.Skin.SetPresetHighlight then hlSync(GB.Skin:SetPresetHighlight()) end
-    mvSync()
-  end)
+  C._mvFooterSync = mvSync
+  -- (No OnShow sync hook: the shell calls this tab's refresh — C:Refresh —
+  -- on every focus, which syncs both footer toggles.)
 
   -- Three panels: left rail (profiles/presets) · middle controls · right preview,
   -- with a vertical divider at each seam.
-  buildRailPane(panel)
-  buildPreviewPane(panel)
-  local vdivL = panel:CreateTexture(nil, "ARTWORK"); vdivL:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  vdivL:SetWidth(1); vdivL:SetPoint("TOPLEFT", RAIL_W, TITLE_DIV_Y); vdivL:SetPoint("BOTTOMLEFT", RAIL_W, FOOTER_H)
-  local vdivR = panel:CreateTexture(nil, "ARTWORK"); vdivR:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  vdivR:SetWidth(1); vdivR:SetPoint("TOPRIGHT", -PREVIEW_W, TITLE_DIV_Y); vdivR:SetPoint("BOTTOMRIGHT", -PREVIEW_W, FOOTER_H)
+  buildRailPane(c)
+  buildPreviewPane(c)
+  local vdivL = c:CreateTexture(nil, "ARTWORK"); vdivL:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
+  vdivL:SetWidth(1); vdivL:SetPoint("TOPLEFT", RAIL_W, 0); vdivL:SetPoint("BOTTOMLEFT", RAIL_W, FOOTER_H)
+  local vdivR = c:CreateTexture(nil, "ARTWORK"); vdivR:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
+  vdivR:SetWidth(1); vdivR:SetPoint("TOPRIGHT", -PREVIEW_W, 0); vdivR:SetPoint("BOTTOMRIGHT", -PREVIEW_W, FOOTER_H)
 
   -- Body: a scroll frame holding the accordion (the middle panel).
   -- The section content grows past the window height, so it scrolls (mouse wheel).
-  local scroll = CreateFrame("ScrollFrame", nil, panel)
+  local scroll = CreateFrame("ScrollFrame", nil, c)
   contentScroll = scroll   -- module ref: ToggleSection scrolls the opened section near the top
-  scroll:SetPoint("TOPLEFT", RAIL_W + 1, TITLE_DIV_Y - 1)
+  scroll:SetPoint("TOPLEFT", RAIL_W + 1, -1)
   scroll:SetPoint("BOTTOMRIGHT", -(PREVIEW_W + 8), FOOTER_H + 1)
   scroll:EnableMouseWheel(true)
   scroll:SetScript("OnMouseWheel", function(self, delta)
@@ -3374,14 +3038,19 @@ local function BuildPanel()
     self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 42)))
   end)
   bodyContainer = CreateFrame("Frame", nil, scroll)
-  bodyContainer:SetSize(PANEL_W - RAIL_W - PREVIEW_W - 9, 10)
+  -- The SHELL owns the window size (no PANEL_W here): the accordion tracks the
+  -- middle pane's live width, so any extra shell width lands in this pane.
+  bodyContainer:SetSize(math.max(10, scroll:GetWidth()), 10)
   scroll:SetScrollChild(bodyContainer)
+  scroll:SetScript("OnSizeChanged", function(self, w)
+    if w and w > 0 then bodyContainer:SetWidth(w) end
+  end)
 
   -- Custom thin scrollbar (shared helper): orange thumb + click-to-jump + drag + wheel.
   -- The accordion grows/shrinks as sections open; the bar's OnUpdate tracks it.
   -- Sits in the middle panel's right gutter, just left of the preview divider.
-  makeScrollbar(panel, scroll, function(b)
-    b:SetPoint("TOPRIGHT", -(PREVIEW_W + 4), TITLE_DIV_Y - 2); b:SetPoint("BOTTOMRIGHT", -(PREVIEW_W + 4), FOOTER_H + 2)
+  makeScrollbar(c, scroll, function(b)
+    b:SetPoint("TOPRIGHT", -(PREVIEW_W + 4), -2); b:SetPoint("BOTTOMRIGHT", -(PREVIEW_W + 4), FOOTER_H + 2)
   end)
 
   -- Sections (mockup order). Profiles/presets live in the left rail now — the
@@ -3401,13 +3070,15 @@ local function BuildPanel()
   -- than scrolling past a large open panel).
   relayout()
 
-  tinsert(UISpecialFrames, "GloomsBarsConfig")   -- Escape closes it
+  -- (Escape-close is the SHELL's job now — GloomsSuiteWindow sits in
+  -- UISpecialFrames; the old GloomsBarsConfig entry is gone with the window.)
 
-  -- Exiting the addon RELOCKS the bars (the owner): however the window goes away —
-  -- the X, ESC, /gb — move mode ends with it, so movers never outlive the
-  -- window. (ESC with the window open ends move mode via one of two paths:
-  -- the mover key catcher eats it, or the window closes and this fires.)
-  panel:HookScript("OnHide", function()
+  -- Exiting the addon RELOCKS the bars (the owner): however the Bars UI goes away
+  -- — the window's X, ESC, /gb, or another tab taking focus — move mode ends
+  -- with it, so movers never outlive the editor. OnHide fires on EFFECTIVE
+  -- visibility, so hiding the Suite window triggers it too, not just a tab
+  -- switch hiding this container directly.
+  c:HookScript("OnHide", function()
     if GB.Layout and GB.Layout:MoveModeOn() then GB.Layout:SetMoveMode(false) end
   end)
   C:RefreshPreview()
@@ -3415,19 +3086,29 @@ local function BuildPanel()
 end
 
 function C:Refresh()
-  if not panel then return end
-  if panel._enableToggle then panel._enableToggle:refresh() end
-  if panel._railRefresh then panel._railRefresh() end
+  if not container then return end
+  if C._enableToggle then C._enableToggle:refresh() end
+  if C._railRefresh then C._railRefresh() end
   for _, s in ipairs(sections) do if s.refresh then s.refresh() end end
   -- Keep the footer Move-bars button in step with the section button + auto-exits
   -- (combat/ESC route through SetMoveMode → C:Refresh); highlight follows too.
-  if panel._mvFooterSync then panel._mvFooterSync() end
-  if panel._hlSync and GB.Skin and GB.Skin.SetPresetHighlight then panel._hlSync(GB.Skin:SetPresetHighlight()) end
+  if C._mvFooterSync then C._mvFooterSync() end
+  if C._hlSync and GB.Skin and GB.Skin.SetPresetHighlight then C._hlSync(GB.Skin:SetPresetHighlight()) end
   C:RefreshPreview()
   C:SetPreviewState(previewState)
 end
 
-function C:Toggle()
-  if not panel then BuildPanel(); C:Refresh(); return end
-  if panel:IsShown() then panel:Hide() else panel:Show(); C:Refresh() end
-end
+-- C:Toggle() is GONE (Phase C, locked decision: hard dependency, no second
+-- window path). /gb's config branch and the minimap button both route through
+-- GloomsHub:ToggleWindow("bars") — the shell owns open/close/switch semantics.
+
+-- Mount the Bars tab (CONTRACTS §2). Registration is cheap and immediate;
+-- BuildTab runs ONCE, lazily, the first time the tab is shown. `refresh`
+-- fires on every focus so live state (footer toggles, rail, preview) re-syncs.
+GloomsHub:RegisterTab{
+  id      = "bars",
+  title   = "BARS",
+  order   = 20,
+  build   = BuildTab,
+  refresh = function() C:Refresh() end,
+}

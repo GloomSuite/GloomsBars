@@ -1,9 +1,10 @@
 ## Interface: 120007
 ## Title: Gloom's Bars
-## Notes: Pure appearance layer for Blizzard's action bars — rounded icons, shape-matched proc glows + cooldown sweeps. Never replaces secure buttons.
+## Notes: Pure appearance layer for Blizzard's action bars — rounded icons, shape-matched proc glows + cooldown sweeps. Never replaces secure buttons. Part of the Gloom suite: configure via the Suite window (needs GloomsHub).
 ## Author: Gloom
 ## Version: @project-version@
 ## SavedVariables: GloomsBarsDB
+## Dependencies: GloomsHub
 ## IconTexture: Interface\AddOns\GloomsBars\Media\ui\minimap.png
 ## X-Website: https://github.com/HandofDevastation/GloomsBars
 

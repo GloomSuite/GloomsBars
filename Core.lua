@@ -24,26 +24,16 @@ end
 GB.msg = msg
 
 -- ---------------------------------------------------------------------------
--- Design tokens — shared skin with Gloom's Auras / Build Barn (same author).
--- Bright-purple accent on a near-black navy plate, condensed Khand titles +
--- GeneralSans body. Fonts bundled in Media/fonts/.
+-- Design tokens — consumed from the suite's shared LibGloomSkin-1.0 (shipped
+-- by GloomsHub, the hard dependency; CONTRACTS §1/§4). The hand-maintained
+-- COLOR copy this file used to carry is gone — GB.COLOR aliases the lib's
+-- table (same literals, plus the text/mute tokens). GB.FONT below deliberately
+-- stays on GB's OWN font files: bar text (keybinds, counts, names) rasterizes
+-- per (path, size), so switching the engine to the Hub's paths would cold-
+-- start every user's bar text for zero gain — the files are byte-identical.
+-- Config-UI text uses the lib's FONT (the Hub's pre-warmed paths) instead.
 -- ---------------------------------------------------------------------------
-local function color(hex)
-  local r = tonumber(hex:sub(1, 2), 16) / 255
-  local g = tonumber(hex:sub(3, 4), 16) / 255
-  local b = tonumber(hex:sub(5, 6), 16) / 255
-  return { r = r, g = g, b = b, hex = hex }
-end
-GB.COLOR = {
-  purple = color("936bff"),  -- bright purple — accents, selection, buttons
-  heroic = color("8031ff"),  -- deep purple
-  green  = color("20ba56"),  -- confirm green
-  red    = color("c41e3a"),  -- destructive
-  orange = color("ff7729"),  -- warning / accent
-  -- Panel base: pre-compensated so #060714 lands on screen (see GloomsAuras Core.lua).
-  dark   = { r = 18/255, g = 19/255, b = 31/255, a = 1 },
-  rim    = { r = 1, g = 1, b = 1, a = 0.10 },
-}
+GB.COLOR = LibStub("LibGloomSkin-1.0").COLOR
 
 GB.MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\"
 
@@ -500,17 +490,22 @@ end
 
 -- Pre-warm the bundled TTF fonts at login so first-session labels never render
 -- blank (same fix as GloomsAuras: WoW may not finish loading a runtime custom
--- font before the first frame that uses it is built).
+-- font before the first frame that uses it is built). Sizes: 14 = the font
+-- flyout's row size, 11 = the font dropdown's label size — the two places the
+-- BUNDLED fonts (GB paths, via LSM) are drawn in the Bars tab. The Hub-path
+-- pairs the tab uses are warmed by LibGloomSkin's RegisterWarmPairs instead.
 local function PreloadFonts()
   local warmer = CreateFrame("Frame", nil, UIParent)
   warmer:SetPoint("TOPLEFT"); warmer:SetSize(1, 1); warmer:SetAlpha(0)
   GB._fontWarmer = warmer
   for _, path in pairs(GB.FONT) do
-    local fs = warmer:CreateFontString(nil, "OVERLAY")
-    fs:SetPoint("TOPLEFT")
-    if fs:SetFont(path, 14, "") then
-      fs:SetText("Ag")
-      fs:GetStringWidth()
+    for _, size in ipairs({ 11, 14 }) do
+      local fs = warmer:CreateFontString(nil, "OVERLAY")
+      fs:SetPoint("TOPLEFT")
+      if fs:SetFont(path, size, "") then
+        fs:SetText("Ag")
+        fs:GetStringWidth()
+      end
     end
   end
 end
@@ -1228,7 +1223,9 @@ SLASH_GLOOMSBARS2 = "/gloomsbars"
 SlashCmdList.GLOOMSBARS = function(input)
   local cmd, arg = (input or ""):lower():match("^%s*(%S*)%s*(%S*)")
   if cmd == "" or cmd == "config" or cmd == "ui" then
-    if GB.Config then GB.Config:Toggle() else msg("style editor not loaded.") end
+    -- Phase C: the style editor renders ONLY inside the Suite window (the
+    -- Bars tab). Slash toggle semantics live in the shell (CONTRACTS §2).
+    GloomsHub:ToggleWindow("bars")
   elseif cmd == "debug" then
     DebugReport()
   elseif cmd == "mask" then

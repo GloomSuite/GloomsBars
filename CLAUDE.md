@@ -12,11 +12,12 @@
 > **▶ PART OF THE GLOOM SUITE.** Gloom's Bars is being unified with Gloom's Auras + Gloom's
 > Overlays under a shared base addon, **GloomsHub** (`~/GloomsHub`). All cross-cutting suite
 > facts — the plan, current phase status, and shared runtime contracts — live THERE and are the
-> single source of truth; this repo does not keep its own copy. Before any *suite* work (mounting
-> GB's config into the shared tabbed window, the shared toolkit/tokens, media/resolver), read
-> `~/GloomsHub/docs/HANDOFF.md` FIRST — it is the active-phase cold-start briefing, and **Phase C
-> (next) migrates THIS repo's config into the Suite window** — then SUITE-STATE.md / SUITE-PLAN.md /
-> CONTRACTS.md. Normal GB-only work (skin, glows, layout, bugs) proceeds here as usual.
+> single source of truth; this repo does not keep its own copy. Before any *suite* work, read
+> `~/GloomsHub/docs/HANDOFF.md` FIRST — it is the active-phase cold-start briefing — then
+> SUITE-STATE.md / SUITE-PLAN.md / CONTRACTS.md. **Phase C (2026-07-24) migrated THIS repo's
+> config into the Suite window's BARS tab**: GB hard-depends on GloomsHub, consumes the shared
+> `LibGloomSkin-1.0` toolkit, and has NO standalone config window (locked decision — never
+> re-add one). Normal GB-only work (skin, glows, layout, bugs) proceeds here as usual.
 > **Gloom's Build Barn is NOT in the suite.**
 
 Bespoke WoW addon: an **appearance + geometry layer** for Blizzard's built-in action bars —
@@ -151,10 +152,12 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
   fallback if libs are absent) + title-bar logo wiring. Left-click opens Config. Data in
   `db.minimap` (account-wide). **New file → needs a full client RESTART to load, not a
   /reload.**
-- `Config.lua` — the style editor. `/gb` opens it. **Three-panel window:** a left RAIL
-  (profile + preset selection, always visible) · a middle scrollable one-open ACCORDION
-  (all the controls) · a right PREVIEW pane, over a footer (Enable toggle, Quick keybind,
-  Move Bars, preset-focus highlight). Toolkit + all wired sections + the working-copy model.
+- `Config.lua` — the style editor. `/gb` opens it **as the BARS tab of the Suite window**
+  (GloomsHub's shell; Phase C). **Three panes in the tab:** a left RAIL (profile + preset
+  selection, always visible) · a middle scrollable one-open ACCORDION (all the controls) · a
+  right PREVIEW pane, over the tab's own footer row (Enable toggle, Quick keybind, Move Bars,
+  preset-focus highlight). Widgets/tokens come from `LibGloomSkin-1.0` (surface pinned in
+  `~/GloomsHub/docs/CONTRACTS.md` §4); all wired sections + the working-copy model live here.
 - `Media/masks/`, `Media/art/` — generated shape + animation art. `tools/generate-art.py`
   regenerates the SDF masks/rings/swipes (edge-padding rule in API-NOTES §2). **Full regen
   is slow (~4 min); regen ONE shape** with `python3 tools/generate-art.py <name>`; the

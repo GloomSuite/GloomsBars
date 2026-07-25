@@ -16,12 +16,14 @@ local ICON = GB.MEDIA .. "ui\\minimap.png"
 -- Shared behavior ----------------------------------------------------------
 
 local function onClick()
-  if GB.Config and GB.Config.Toggle then GB.Config:Toggle() end
+  -- Phase C: the style editor is the Bars tab of the Suite window (GloomsHub
+  -- is a hard dependency, so the shell is always present).
+  GloomsHub:ToggleWindow("bars")
 end
 
 local function fillTooltip(tt)
   tt:SetText("Gloom's Bars", 0.576, 0.42, 1)  -- 936bff purple
-  tt:AddLine("Left-click: open the style editor", 0.8, 0.8, 0.8)
+  tt:AddLine("Left-click: open the style editor (Suite window)", 0.8, 0.8, 0.8)
 end
 
 -- LibDBIcon writes hide + minimapPos into GB.db.minimap (GloomsBarsDB is
