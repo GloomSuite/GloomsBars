@@ -5,7 +5,7 @@
 ## Version: @project-version@
 ## SavedVariables: GloomsBarsDB
 ## Dependencies: GloomsHub
-## IconTexture: Interface\AddOns\GloomsBars\Media\ui\minimap.png
+## IconTexture: Interface\AddOns\GloomsBars\Media\ui\logo.png
 ## X-Website: https://github.com/GloomSuite/GloomsBars
 
 # Embedded libraries — load FIRST. LibStub + CallbackHandler stay (general
