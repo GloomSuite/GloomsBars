@@ -54,20 +54,14 @@ tinted the NON-usable states; the base tint paints the usable one, so a green ic
 trusts a colour matching one of Blizzard's three canonical values (`classifyAvail`) and keeps the last known
 state otherwise. Same bug class as the SetVertexColor wars already documented in this file.
 
-### ⚠ A REAL CAVEAT IN THE SUITE'S `luac -l … _ENV` GLOBAL-READ CHECK — hit and diagnosed this session.
-The check (Hub HANDOFF, GA's session) reported `_ENV "SlashCmdList"` as REMOVED from `Core.lua` after an edit
-that touched nothing of the sort. **It was a false removal.** Once a file's constant table passes 255 entries,
-the compiler can no longer use the compact `GETTABUP … ; _ENV "name"` form and emits
-`GETUPVAL _ENV` + `LOADK "name"` + `GETTABLE` instead — the same global read, spelled differently, and the
-grep pattern stops matching it. **Treat REMOVED entries as suspect on large files; only ADDED entries are the
-real signal.** Confirm by disassembling the specific call site before chasing it.
-
 ### QA / release
 The owner exercised it in the client and approved it (*"This is awesome"*) before asking for the release; the
 detail of what he clicked wasn't reported back, so treat the **Strength slider at both extremes and the
-availability/range override** as the least-witnessed paths if anything ever looks off. Statically verified
-here: all three files pass `luac -p` with a clean global-read diff. Released as **`v1.1.0`** (feature, so a
-MINOR bump off `v1.0.1`; versions are allowed to drift per the suite's locked decision — only GB changed).
+availability/range override** as the least-witnessed paths if anything ever looks off. Released as
+**`v1.1.0`** (feature, so a MINOR bump off `v1.0.1`; versions are allowed to drift per the suite's locked
+decision — only GB changed). *(Tooling note for whoever codes next, not a project fact: on files this size the
+`_ENV` global-read diff reports false REMOVALS — past ~255 constants the same global read compiles to a
+different opcode form and the grep stops matching. Only ADDED entries are signal.)*
 
 ---
 
