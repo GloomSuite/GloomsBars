@@ -14,8 +14,10 @@
 > facts — the plan, current phase status, and shared runtime contracts — live THERE and are the
 > single source of truth; this repo does not keep its own copy. Before any *suite* work (mounting
 > GB's config into the shared tabbed window, the shared toolkit/tokens, media/resolver), read
-> `~/GloomsHub/docs/SUITE-STATE.md` first, then SUITE-PLAN.md / CONTRACTS.md. Normal GB-only
-> work (skin, glows, layout, bugs) proceeds here as usual. **Gloom's Build Barn is NOT in the suite.**
+> `~/GloomsHub/docs/HANDOFF.md` FIRST — it is the active-phase cold-start briefing, and **Phase C
+> (next) migrates THIS repo's config into the Suite window** — then SUITE-STATE.md / SUITE-PLAN.md /
+> CONTRACTS.md. Normal GB-only work (skin, glows, layout, bugs) proceeds here as usual.
+> **Gloom's Build Barn is NOT in the suite.**
 
 Bespoke WoW addon: an **appearance + geometry layer** for Blizzard's built-in action bars —
 rounded / non-square icons, restyled text, **shape-matched proc glows + cooldown sweeps**
