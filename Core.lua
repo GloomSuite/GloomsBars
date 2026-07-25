@@ -721,7 +721,8 @@ loader:SetScript("OnEvent", function(_, event, arg1)
     -- Bar layout (phase L1): hook the bars' grid updates + apply any owned
     -- bars' layouts (all buttons exist by PLAYER_LOGIN).
     if GB.Layout then GB.Layout:Init(); GB.Layout:ApplyAll() end
-    if GB.InitMinimapButton then GB:InitMinimapButton() end
+    -- (GB's minimap button retired with Phase C — the ONE suite launcher is
+    -- GloomsHub's. Stale GB.db.minimap data is harmless leftover.)
   end
 end)
 
