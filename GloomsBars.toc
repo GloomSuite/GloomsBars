@@ -6,7 +6,7 @@
 ## SavedVariables: GloomsBarsDB
 ## Dependencies: GloomsHub
 ## IconTexture: Interface\AddOns\GloomsBars\Media\ui\minimap.png
-## X-Website: https://github.com/HandofDevastation/GloomsBars
+## X-Website: https://github.com/GloomSuite/GloomsBars
 
 # Embedded libraries — load FIRST. LibStub + CallbackHandler stay (general
 # lib plumbing). The minimap launcher retired with Phase C — the ONE suite

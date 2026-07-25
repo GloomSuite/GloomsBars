@@ -989,7 +989,7 @@ square. These are soft/whole-image renders, not 9-sliced, so no floor problem. (
 ## Project & environment
 - WoW **Midnight 12.0.7** retail, Interface `120007`. Client at `/Applications/World of Warcraft/_retail_/`.
 - Repo root = addon folder, symlinked to `…/Interface/AddOns/GloomsBars`. BugSack installed.
-- GitHub: https://github.com/HandofDevastation/GloomsBars (public). Releases: tag push →
+- GitHub: https://github.com/GloomSuite/GloomsBars (public). Releases: tag push →
   BigWigs packager workflow → GitHub Release → WoWUp installs/updates via repo URL.
   Shipped: **`v1.0.0` (2026-07-24, latest)**, v0.2.0, v0.1.0, v0.0.1 — pipeline + zip contents verified
   each time. ★ **Release state is a SUITE fact; the home of record is `~/GloomsHub/docs/SUITE-STATE.md`

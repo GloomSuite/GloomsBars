@@ -9,7 +9,7 @@ layout (position, scale, rows, spacing); this addon owns only the *look*. That k
 lightweight and free of the taint / combat-lockdown machinery of full bar replacements.
 
 Bespoke for the **Hand of Devastation** guild. Sibling to
-[Gloom's Auras](https://github.com/HandofDevastation/GloomsAuras) and Gloom's Build Barn.
+[Gloom's Auras](https://github.com/GloomSuite/GloomsAuras) and Gloom's Build Barn.
 
 ## Install (WoWUp)
 
