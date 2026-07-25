@@ -172,8 +172,7 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
   flushed on `PLAYER_REGEN_ENABLED`. Also hosts the Quick-keybind launcher reskin.
 - `MinimapButton.lua` — the minimap launcher (LibDBIcon/LibDataBroker, with a self-contained
   fallback if libs are absent) + title-bar logo wiring. Left-click opens Config. Data in
-  `db.minimap` (account-wide). **New file → needs a full client RESTART to load, not a
-  /reload.**
+  `db.minimap` (account-wide).
 - `Config.lua` — the style editor. `/gb` opens it **as the BARS tab of the Suite window**
   (GloomsHub's shell; Phase C). **Three panes in the tab:** a left RAIL (profile + preset
   selection, always visible) · a middle scrollable one-open ACCORDION (all the controls) · a
@@ -240,8 +239,10 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
 The repo root **is** the addon folder, symlinked into the client at
 `/Applications/World of Warcraft/_retail_/Interface/AddOns/GloomsBars`. QA is done by the owner
 (non-developer): give **ONE copy-paste instruction at a time**, verify before claiming, and
-when something misbehaves ask for the **BugSack error text first**. New files or new media
-assets require a **full client restart** (a /reload only re-reads existing files). See
+when something misbehaves ask for the **BugSack error text first**.
+**★ `/reload` is enough, including for NEW files (the owner, 2026-07-25)** — the old
+"new files/assets → FULL CLIENT RESTART" rule is RETIRED suite-wide. Home of record:
+GloomsHub's `docs/HANDOFF.md` working agreement 6. See
 [[how-owner-works]] and [[dont-swirl-stabilize-early]].
 
 ## Git / releases
