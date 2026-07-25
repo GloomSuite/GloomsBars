@@ -1780,15 +1780,36 @@ end
 -- (from UpdateUsable's vertex colour) and outOfRange (from UpdateRangeIndicator's
 -- inRange arg). Out-of-range wins (it's the actionable one, matching Blizzard's red
 -- keybind); else usable/oom/unusable. Only OUR desaturation is cleared (rec.gbDesat).
+-- Fade a tint toward WHITE by strength s (0 = no tint, 1 = the full colour).
+-- SetVertexColor MULTIPLIES, so white is its neutral element — lerping toward it
+-- is what "intensity" means for a tint. ⚠ NOT the 4th SetVertexColor arg: that is
+-- the icon's ALPHA, which would make the icon transparent, not the tint weaker.
+local function tintAt(c, s)
+  if s >= 1 then return c[1], c[2], c[3] end
+  return 1 + (c[1] - 1) * s, 1 + (c[2] - 1) * s, 1 + (c[3] - 1) * s
+end
 local function computeIconTint(btn)
   local rec = records[btn]
   local icon = btn.icon or btn.Icon
   if not (rec and rec.active and icon) then return end
   -- Track OUR desaturation on rec.gbDesat so we only ever clear what we set (leaves
-  -- Blizzard's level-link desaturation alone).
-  local function setDesat(on)
-    if on then icon:SetDesaturated(true); rec.gbDesat = true
-    elseif rec.gbDesat then icon:SetDesaturated(false); rec.gbDesat = nil end
+  -- Blizzard's level-link desaturation alone). Takes a boolean (the availability
+  -- callers) OR a 0..1 amount: ★ Textures carry a FLOAT desaturation as well as the
+  -- boolean — Blizzard uses `icon:SetDesaturation(0.5)` itself (verified in
+  -- Blizzard_RuneforgeUI/Blizzard_RuneforgeModifierSlot.lua:150 on disk). That's
+  -- what lets the icon tint's strength slider fade a wash continuously instead of
+  -- snapping between colour and greyscale. Feature-detected, with the boolean as a
+  -- fallback. (Do NOT confuse it with the GLOBAL SetDesaturation(tex, bool) helper
+  -- in UIParent.lua:546, which just forwards to SetDesaturated — a legacy shim.)
+  local function setDesat(v)
+    local amount = (v == true and 1) or (type(v) == "number" and v) or 0
+    if amount > 0 then
+      if icon.SetDesaturation then icon:SetDesaturation(amount) else icon:SetDesaturated(true) end
+      rec.gbDesat = true
+    elseif rec.gbDesat then
+      if icon.SetDesaturation then icon:SetDesaturation(0) else icon:SetDesaturated(false) end
+      rec.gbDesat = nil
+    end
   end
   if pv("rangeTint") and rec.outOfRange then
     -- Desaturate FIRST, then tint → a clean red wash over greyscale (not a multiply
@@ -1804,19 +1825,51 @@ local function computeIconTint(btn)
   elseif rec.availState == "unusable" then
     local c = pv("availUnusable") or { 0.4, 0.4, 0.4 }; icon:SetVertexColor(c[1], c[2], c[3])
     setDesat(pv("availDesaturate") and true or false)
-  else   -- usable / in range: reset to full colour (the range hook doesn't touch the
-    setDesat(false); icon:SetVertexColor(1, 1, 1)   -- icon, so we must clear our own tint here)
+  else
+    -- Usable / in range — the ONLY state the base icon tint paints. The three
+    -- states above are the actionable signals (can't afford it / can't use it /
+    -- can't reach it) and they deliberately WIN, so tinting a bar green never
+    -- costs you the red out-of-range read. Tint off = reset to full colour (the
+    -- range hook doesn't touch the icon, so we must clear our own tint here).
+    local mode = pv("iconTintMode") or "off"
+    if mode == "off" then
+      setDesat(false); icon:SetVertexColor(1, 1, 1)
+    else
+      -- "wash" desaturates first so the colour lands on greyscale (one clean hue);
+      -- "tint" multiplies over the untouched art (keeps the icon readable).
+      -- Strength fades BOTH halves, so 0% is a genuinely untouched icon either way.
+      local c = pv("iconTintColor") or { 1, 1, 1 }
+      local s = pv("iconTintStrength"); if s == nil then s = 1 end
+      s = (s < 0 and 0) or (s > 1 and 1) or s
+      setDesat(mode == "wash" and s or 0)
+      icon:SetVertexColor(tintAt(c, s))
+    end
   end
 end
 -- Post-hook of UpdateUsable: the icon vertex is Blizzard's fresh state → read it to
 -- detect the state (never our own tint: Blizzard re-sets the canonical colour at the
 -- top of UpdateUsable, before this runs), then re-apply our combined tint.
+-- ★ We only trust a read that MATCHES one of Blizzard's three canonical colours
+-- (usable 1,1,1 / oom 0.5,0.5,1 / unusable 0.4,0.4,0.4); anything else is our own
+-- tint bleeding through, so we keep the last known state instead of misreading it.
+-- Why this matters now: the base icon tint paints the USABLE state, so if that
+-- invariant ever slipped, a green icon (r 0.5) would read as "unusable" → repaint
+-- grey (r 0.4) → read "unusable" again, and the button would LATCH grey until a
+-- reload. The old two-branch test had no such exposure because we only ever tinted
+-- the non-usable states. Cheap insurance against a known bug class in this file.
+local function classifyAvail(r, g, b)
+  if not (r and g and b) then return nil end
+  if r >= 0.9 and g >= 0.9 and b >= 0.9 then return "usable" end
+  if b >= 0.9 and r < 0.9 and g < 0.9 then return "oom" end
+  if r < 0.9 and g < 0.9 and b < 0.9 then return "unusable" end
+  return nil   -- not a Blizzard colour → ours; don't touch the stashed state
+end
 local function refreshAvailability(btn)
   local rec = records[btn]
   local icon = btn.icon or btn.Icon
   if not (rec and rec.active and icon) then return end
-  local r, _, b = icon:GetVertexColor()
-  rec.availState = (r and r >= 0.9) and "usable" or ((b and b >= 0.9) and "oom" or "unusable")
+  local state = classifyAvail(icon:GetVertexColor())
+  if state then rec.availState = state end
   computeIconTint(btn)
 end
 -- Post-hook of ActionButton_UpdateRangeIndicator: Blizzard hands us checksRange +
@@ -1839,6 +1892,12 @@ function Skin:SetAvailUnusable(c) if GB.db then GB.db.availUnusable = c end; app
 function Skin:SetAvailOOM(c) if GB.db then GB.db.availOOM = c end; applyAvailabilityAll() end
 function Skin:SetRangeTint(b) if GB.db then GB.db.rangeTint = b end; applyAvailabilityAll() end
 function Skin:SetRangeColor(c) if GB.db then GB.db.rangeColor = c end; applyAvailabilityAll() end
+-- Base icon tint. Same funnel as the availability tints — computeIconTint is the
+-- ONE place the icon vertex colour is written, so these re-apply through it and
+-- inherit its Blizzard re-assert hooks for free.
+function Skin:SetIconTintMode(m) if GB.db then GB.db.iconTintMode = m end; applyAvailabilityAll() end
+function Skin:SetIconTintColor(c) if GB.db then GB.db.iconTintColor = c end; applyAvailabilityAll() end
+function Skin:SetIconTintStrength(v) if GB.db then GB.db.iconTintStrength = v end; applyAvailabilityAll() end
 
 -- Icon W/H for the active hand shape: short side = the button's Edit-Mode size ×
 -- sizeScale; the long side = short × the shape's aspect on its long axis. Returns

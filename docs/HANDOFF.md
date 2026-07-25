@@ -1,5 +1,76 @@
 # Gloom's Bars — Session Handoff
 
+## ★★★ SESSION 17 (2026-07-25) — MODIFIER SYMBOLS DROPPED · NEW FEATURE: BASE ICON TINT. Released as `v1.1.0`.
+**Read this first.** Two things happened: the last carried GB decision was CLOSED (as won't-do), and a new
+user-facing feature was built from a cold question. **No open bugs. Nothing is carried into the next session.**
+
+### PART A — Modifier symbols (⌘⇧⌃⌥): DROPPED, won't do.
+The owner's call after asking for a read on the approach *before* any code was written. Full record + the
+reasoning is on **owner-decision item (d)** below — that is the home of record; don't restate it. Short form:
+WoW can never style an inline `|T…|t` texture, and the "approved path" (a second FontString in a glyph font)
+hid a prerequisite nobody had priced — a bundled font actually containing U+2318/21E7/2303/2325, which GB
+does not have. **This also emptied the whole suite's polish backlog** (Hub to-do item 3).
+★ **The lesson: price a carried backlog item before you schedule it.** It had read as "fiddly but approved"
+across three handoffs. Reading the code first turned a planned session into a one-exchange close.
+
+### PART B — NEW FEATURE: base icon tint (`Skin.lua` / `Core.lua` / `Config.lua`).
+"Tint all the icons on my bar green." **Config → Decoration layers → ICON TINT**: a mode row
+**Off / Wash / Tint**, a colour swatch, and a **Strength** slider (0–100%, greyed when Off).
+- **Wash** = desaturate, then colour → one clean hue. **Tint** = multiply the colour over untouched art →
+  the icon keeps its own colours and takes a cast.
+- **It hangs off `computeIconTint`, which was already the ONE place the icon vertex colour is written** — so
+  it inherited the Blizzard re-assert hooks (UpdateUsable + UpdateRangeIndicator) for free. That is why this
+  was a small change and not a new engine. New setters: `Skin:SetIconTintMode/Color/Strength`.
+- **Availability + range OVERRIDE the base tint by design.** It paints the usable/in-range case ONLY, so a
+  green bar never costs you the red out-of-range read. (Raise it with the owner before changing that.)
+- **Per-bar for free** — it's in `PRESET_FIELDS`, so it rides the preset→bar assignment with no extra work.
+  Legacy presets have no value → reads "off"; strength absent → 1.
+- **UI placement was CORRECTED mid-session by the owner:** it first went into *Cooldown & availability* (next
+  to the tints it shares an engine funnel with) and he rejected that — *"this belongs in Decoration Layers.
+  What a weird choice."* ★ **He is right and it generalizes: group controls by what they DO to the button,
+  never by which engine function they happen to call.** Grouping by shared plumbing is the engine's logic
+  leaking into the UI. Cooldown & availability keeps a one-line pointer in its hint.
+
+### ★★ TWO VERIFIED CLIENT FACTS worth keeping (both read off Blizzard's 12.0.7 source on disk):
+1. **Textures carry a FLOAT desaturation, not just the boolean.** `icon:SetDesaturation(0.5)` is real —
+   Blizzard uses it in `Blizzard_RuneforgeUI/Blizzard_RuneforgeModifierSlot.lua:150`. That is what lets Wash
+   fade *continuously* instead of snapping between colour and greyscale. Feature-detected in `setDesat`, with
+   `SetDesaturated` as the fallback. ⚠ **Do NOT confuse it with the GLOBAL `SetDesaturation(tex, bool)` helper
+   at `UIParent.lua:546`** — that one just forwards to `SetDesaturated` and is a legacy shim.
+2. **WoW has exactly FIVE blend modes**, per the client's own schema `Blizzard_SharedXML/UI.xsd:43-51`:
+   `DISABLE` · `BLEND` (default) · `ALPHAKEY` (1-bit alpha) · `ADD` · `MOD`. Real usage in 12.0.7 is lopsided —
+   ADD 1695 XML + 22 Lua, BLEND 315 + 8, MOD 5; DISABLE/ALPHAKEY are legal but effectively dead.
+   ★ **Bearing on the tint:** `MOD` is mathematically what `SetVertexColor` already does, so a MOD overlay
+   buys nothing. **`ADD` is the one genuinely different look** — a glaze that BRIGHTENS toward the colour
+   instead of darkening, which would sidestep Tint mode's "multiply goes muddy" limit. It needs a real overlay
+   texture layer per button (more than a slider), and it's the natural third mode if Tint ever reads too dark.
+- ★ Also: **"intensity" for a tint means lerping toward WHITE**, the neutral element of a multiply — NOT the
+  4th `SetVertexColor` arg, which is the icon's ALPHA and would make the icon transparent instead.
+
+### ★ ONE HARDENING, done while in there (not cosmetic — it prevents a latch):
+`refreshAvailability` detects Blizzard's state by READING the icon's vertex colour. That was safe while GB only
+tinted the NON-usable states; the base tint paints the usable one, so a green icon (r 0.5) could have read as
+"unusable" → repaint grey (r 0.4) → read "unusable" again, **latching grey until a reload**. Detection now only
+trusts a colour matching one of Blizzard's three canonical values (`classifyAvail`) and keeps the last known
+state otherwise. Same bug class as the SetVertexColor wars already documented in this file.
+
+### ⚠ A REAL CAVEAT IN THE SUITE'S `luac -l … _ENV` GLOBAL-READ CHECK — hit and diagnosed this session.
+The check (Hub HANDOFF, GA's session) reported `_ENV "SlashCmdList"` as REMOVED from `Core.lua` after an edit
+that touched nothing of the sort. **It was a false removal.** Once a file's constant table passes 255 entries,
+the compiler can no longer use the compact `GETTABUP … ; _ENV "name"` form and emits
+`GETUPVAL _ENV` + `LOADK "name"` + `GETTABLE` instead — the same global read, spelled differently, and the
+grep pattern stops matching it. **Treat REMOVED entries as suspect on large files; only ADDED entries are the
+real signal.** Confirm by disassembling the specific call site before chasing it.
+
+### QA / release
+The owner exercised it in the client and approved it (*"This is awesome"*) before asking for the release; the
+detail of what he clicked wasn't reported back, so treat the **Strength slider at both extremes and the
+availability/range override** as the least-witnessed paths if anything ever looks off. Statically verified
+here: all three files pass `luac -p` with a clean global-read diff. Released as **`v1.1.0`** (feature, so a
+MINOR bump off `v1.0.1`; versions are allowed to drift per the suite's locked decision — only GB changed).
+
+---
+
 ## ★★★ SESSION 16 (2026-07-24) — CLAUDE.md REWRITE · DEAD-ASSET CLEANUP · GLOOM SUITE / GloomsHub SCAFFOLD. ALL COMMITTED, tree clean.
 No in-game changes to GB's runtime this session (docs + asset cleanup + a new sibling repo). GB commits, in order:
 `c18ac2b` (CLAUDE.md rewrite), `1dfdff3` (delete dead corner art + trim generator/registry), `f5bc569` (suite
@@ -25,9 +96,10 @@ plan, later reduced to a pointer), `ee001fe` (suite-header + pointer). No push y
   **Suite progress lives in `~/GloomsHub/docs/SUITE-STATE.md` — do not restate it here.** (For orientation
   only, as of 2026-07-24: the 7-phase plan is code-complete — GB migrated into the Suite window's Bars tab
   in Phase C, and Phase G released the whole suite at `v1.0.0`.) Memory: [[gloom-suite-hub]].
-- **STILL-PENDING GB decisions carried:** modifier-symbols outline/shadow (item (d)) remains open.
-  Item (b) CLAUDE.md rewrite is CLOSED, and **item (c) release tag is CLOSED — `v1.0.0` shipped
-  2026-07-24** with the rest of the suite.
+- **GB owner decisions: ALL CLOSED.** Item (b) CLAUDE.md rewrite CLOSED; **item (c) release tag CLOSED —
+  `v1.0.0` shipped 2026-07-24** with the rest of the suite; **item (d) modifier-symbols outline/shadow
+  CLOSED 2026-07-25 — DROPPED, won't do** (the owner: juice isn't worth the squeeze; see item (d) below
+  for the full reasoning and the do-not-re-propose note). **Nothing is carried.**
 
 ---
 
@@ -66,7 +138,7 @@ settles); ONE QA step at a time; the secure-frame / out-of-combat caution is MIN
    quiet. Existing profiles set inner-only in the Glows section; the seed only affects fresh installs.
    Commit `9080b82`. ([[pet-stance-glow-mirrors-blizzard]])
 
-## ▶ STILL-PENDING THE OWNER DECISIONS (carried, none blocking):
+## ▶ THE OWNER DECISIONS — ALL FOUR NOW CLOSED (a/b/c/d). Nothing is carried. Kept for the record:
 - (a) "Default" mode label — KEEP "Default" (do NOT relabel to "Blizzard"). CLOSED.
 - (b) Rewrite **CLAUDE.md** — its "pure skin v1 / settled decisions" block is STALE (layout built, profiles
   exist, pet/stance skinned+laid-out, no-"v1" rule, secure-geometry now in play, RefreshAll combat-gated).
@@ -78,11 +150,29 @@ settles); ONE QA step at a time; the secure-frame / out-of-combat caution is MIN
   `## Dependencies: GloomsHub`. It was three phases stale, not merely "unshipped work behind it".
   **Check what a tag POINTS AT, not just that it exists.** Suite-wide release state:
   `~/GloomsHub/docs/SUITE-STATE.md`.
-- (d) **Modifier symbols (⌘⇧⌃⌥) don't take outline/shadow — DEFERRED but the owner wants it.** They're inline PNG
-  textures (Skin.lua MOD_ICON), which WoW can't outline/shadow, and a single FontString can't mix fonts.
-  The approved path: render the symbols as their OWN separate FontString in a glyph font overlaid next to the
-  keybind, same outline/shadow applied to both. Fiddly (anchoring/zones/combat re-assert) — a focused task,
-  not a quick fix. ([[modifier-symbols-outline-deferred]])
+- (d) **Modifier symbols (⌘⇧⌃⌥) don't take outline/shadow — ✅ CLOSED 2026-07-25: DROPPED, WON'T DO.**
+  The owner's call, after reviewing the approach: *"leave the glyphs untouched… juice isn't worth the
+  squeeze. I can deal with no stroke/dropshadow on the glyphs."* **Do not re-propose this**, and do not
+  quietly "fix" it while touching keybind text. The glyphs stay as inline PNGs
+  (`MOD_ICON`/`symbolizeHotkey`, [Skin.lua:826-865](../Skin.lua#L826-L865)), unstyled by design.
+  **Why it was dropped, so nobody re-derives it:**
+  - WoW cannot outline or shadow an inline `|T…|t` texture, and one FontString cannot mix fonts —
+    so the styling can NEVER reach the glyphs on the current path. That much is settled fact.
+  - The approved path (a second FontString in a glyph font) carried an **unstated hard prerequisite**:
+    a bundled font actually containing U+2318/21E7/2303/2325. GB bundles Khand + GeneralSans, both Latin
+    display faces that almost certainly lack all four — so it meant sourcing/subsetting a **new `.ttf`**,
+    which is the suite's ONE genuine full-client-restart case, plus a licensing question.
+  - It also meant duplicating the whole keybind surface on a parallel FontString: zone math
+    (corner/center/extension/plate), `scaledFontSize`, the Midnight font-object shadow priming, the
+    `UpdateHotkeys` re-assert, the pet `SetVertexColor` war, pristine stash/restore, and new
+    pair-centering math. Large surface on the addon's most bug-prone text element.
+  - **The cheaper alternative, if this is ever reopened** (it shouldn't be, absent a new reason): stay in
+    the texture layer — bake outline variants (none/outline/thick) + a black silhouette in
+    `tools/generate-modglyphs.py`, and emit two inline textures per modifier (silhouette offset, glyph on
+    top) via the escape's x/y offset args. No new FontString, no new font, no restart. Its two costs:
+    specifying offsets means giving an explicit height (losing `:0` auto-line-height — `scaledFontSize`
+    has the number), and **shadow COLOUR would stay baked black**, since inline textures take no tint.
+  ([[modifier-symbols-outline-deferred]])
 
 ## ★★★ SESSION 15 (2026-07-23) — 3 BUGS RESOLVED · CONFIG UX WAVE · PRESET-FOCUS HIGHLIGHT · 2 IN-PLAY BUG FIXES. ALL COMMITTED + QA'd.
 Commits, in order: `9080b82` (pet stance glow), `adf8dc4` (Config UX), `ad881b4` (highlight + footer + colours

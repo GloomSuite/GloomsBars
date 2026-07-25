@@ -214,6 +214,7 @@ GB.PRESET_FIELDS = {
   "iconAspect", "iconFill", "sweepOvershoot", "emptySlots", "emptySlotAlpha",
   "swipeColor", "swipeAlpha", "finishFlash", "finishFlashColor",
   "availDesaturate", "availUnusable", "availOOM", "rangeTint", "rangeColor",
+  "iconTintMode", "iconTintColor", "iconTintStrength",
   "stateColors", "stateIntensity", "stateWidth", "castFillColor",
   "castFillAlpha", "castDrainDir", "castInterruptColor", "castInterruptSpeed",
   "castCompleteColor", "glowColor", "glowAssistColor", "glowIntensity",
@@ -588,6 +589,23 @@ local DB_DEFAULTS = {
   -- IsActionInRange call. Off by default; default tint ≈ Blizzard's RED_FONT_COLOR.
   rangeTint = false,
   rangeColor = { 1, 0.2, 0.2 },
+  -- Base icon tint: recolour EVERY icon on the bar (Config → Cooldown &
+  -- availability → ICON TINT). Two modes, because they are genuinely different
+  -- looks and neither is obviously right:
+  --   "wash" — desaturate FIRST, then tint → a clean single-hue wash. Strong and
+  --            uniform, but icon art gets much harder to tell apart at a glance.
+  --            (Same technique as the out-of-range tint.)
+  --   "tint" — multiply the colour over the icon, art untouched → the icon keeps
+  --            its own colours and takes a cast. Subtler; multiply DARKENS, so
+  --            pale colours read best and a saturated one goes muddy.
+  -- Availability/range OVERRIDE this — they're the actionable signals, so this
+  -- paints the normal usable, in-range case only. Absent (legacy presets) = off.
+  -- Strength fades the colour toward white (white = the neutral element of a
+  -- multiply) AND, in wash mode, the desaturation with it — so 0% is a genuinely
+  -- untouched icon in either mode, not "greyscale with no colour on it".
+  iconTintMode = "off",              -- "off" | "wash" | "tint"
+  iconTintColor = { 0.5, 1, 0.5 },   -- pale green; multiply-friendly default
+  iconTintStrength = 1,              -- 0..1; absent (legacy presets) = 1 (full)
   -- State-highlight tints (hover/selected/flash) + intensity + spread — Config-editable.
   stateColors = { hover = { 1, 0.82, 0.35 }, selected = { 0.45, 0.75, 1 }, flash = { 1, 0.25, 0.25 } },
   stateIntensity = 1,

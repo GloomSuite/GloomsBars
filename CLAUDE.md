@@ -153,7 +153,9 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
   refresh), `GB.BARS` (all 10 bars) / `GB.BUTTONS_PER_BAR` / `GB:ForEachButton` (honours a
   bar's own `count`), `InitMinimapButton`, and the `/gb` diagnostic router.
 - `Skin.lua` — GB.Skin: the skin engine (zoom/mask/art-suppression, cooldown sweeps, state
-  art, cast/channel shaping, usability/OOM/range tints, empty-slot dim/hide, text styling for
+  art, cast/channel shaping, usability/OOM/range tints + the **base icon tint** (Wash/Tint +
+  strength; `computeIconTint` is the ONE place the icon vertex colour is written — hang any
+  future icon recolour off it, never a second writer), empty-slot dim/hide, text styling for
   keybind/count/countdown/name incl. the Midnight font-object shadow, hit-rect extension for
   non-square shapes, re-assert hooks) + the decoration/construction engine (gradient plate,
   border, bidirectional + continuous extension). Owns the **per-button preset ctx** (`pv()`

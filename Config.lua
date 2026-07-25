@@ -862,10 +862,40 @@ local function buildDecorSection(bf, s)
     function(v) local b = ensureBorder(); b.alpha = v; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
     function(v) return math.floor(v * 100 + 0.5) .. "%" end)
 
+  -- ICON TINT — recolour the icon art itself. Lives here, with the other layers
+  -- you paint ONTO a button, rather than next to the availability tints it shares
+  -- an engine funnel with (the owner, 2026-07-25 — that grouping was the engine's
+  -- logic leaking into the UI). Off / Wash (desaturate, then colour → one clean
+  -- hue) / Tint (colour multiplied over the untouched art → the icon keeps its
+  -- own colours and takes a cast).
+  local itlab = newText(bf, FONT.head, 13, COLOR.purple, "LEFT"); itlab:SetPoint("TOPLEFT", 18, -416); itlab:SetText("ICON TINT")
+  local ittl = newText(bf, FONT.body, 12, TEXT, "LEFT"); ittl:SetPoint("TOPLEFT", 18, -446); ittl:SetText("Tint icons")
+  local itModes, itmPrev = {}, nil
+  for i = 3, 1, -1 do   -- reverse → Off ends up leftmost
+    local mc = ({ { "off", "Off" }, { "wash", "Wash" }, { "tint", "Tint" } })[i]
+    local b = flatButton(bf, 54, 22, COLOR.heroic, mc[2], 11)
+    if itmPrev then b:SetPoint("TOPRIGHT", itmPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -444) end
+    b:SetScript("OnClick", function()
+      if GB.Skin then GB.Skin:SetIconTintMode(mc[1]) end
+      s.refresh(); C:SetPreviewState("idle")   -- idle so the tint is visible undimmed
+    end)
+    itModes[#itModes + 1] = { b = b, m = mc[1] }; itmPrev = b
+  end
+  local itcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); itcl:SetPoint("TOPLEFT", 30, -478); itcl:SetText("Tint color")
+  local itcs = colorSwatch(bf,
+    function() return GB.db and GB.db.iconTintColor end,
+    function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end)
+  itcs.swatch:SetPoint("TOPRIGHT", -18, -476)
+
+  local itStr = sliderRow(bf, -510, "Strength", 0, 1, 0.05,
+    function() local v = GB.db and GB.db.iconTintStrength; return v == nil and 1 or v end,
+    function(v) if GB.Skin then GB.Skin:SetIconTintStrength(v) end; C:SetPreviewState("idle") end,
+    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
+
   local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -416); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Direction sets the solid edge; Fade start its reach. Two-tone makes the border a gradient.")
-  bf:SetHeight(440)
+  hint:SetPoint("TOPLEFT", 18, -556); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
+  hint:SetText("Direction sets the solid edge; Fade start its reach. Two-tone makes the border a gradient. Icon tint colors the normal state only, so out-of-range, out-of-mana and unusable still show through — Wash gives one clean color but makes icons harder to tell apart, Tint keeps the art and adds a cast (pale colors work best). Strength 0% leaves icons untouched in either mode.")
+  bf:SetHeight(628)
   s.refresh = function()
     en:refresh(); cs:refresh(); bleedRow:refresh(); dirR:refresh()
     ben:refresh(); bcs:refresh(); twoTog:refresh(); bcs2:refresh(); bdirR:refresh(); thickRow:refresh(); bopRow:refresh()
@@ -874,6 +904,12 @@ local function buildDecorSection(bf, s)
     bc2lab:SetAlpha(two and 1 or 0.35)
     bcs2.swatch:EnableMouse(two); bcs2.swatch:SetAlpha(two and 1 or 0.35)
     bdirR:setEnabled(two)
+    -- Icon tint: light the active mode, grey the colour swatch when off.
+    local tintMode = (GB.db and GB.db.iconTintMode) or "off"
+    for _, e in ipairs(itModes) do e.b:SetActive(e.m == tintMode) end
+    local tintOn = tintMode ~= "off"
+    itcl:SetAlpha(tintOn and 1 or 0.35); itcs.swatch:EnableMouse(tintOn and true or false); itcs.swatch:SetAlpha(tintOn and 1 or 0.35)
+    itcs:refresh(); itStr:refresh(); itStr:setEnabled(tintOn)
   end
 end
 
@@ -1582,7 +1618,7 @@ local function buildCooldownSection(bf, s)
 
   local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
   hint:SetPoint("TOPLEFT", 18, -354); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Availability tints react to Blizzard's own checks (no preview — test on the bars). Out-of-range matches the red keybind; unusable/mana fire for wrong form, missing resources, etc. Countdown-number styling lives in Text.")
+  hint:SetText("Availability tints react to Blizzard's own checks (no preview — test on the bars). Out-of-range matches the red keybind; unusable/mana fire for wrong form, missing resources, etc. The base icon color lives in Decoration layers. Countdown-number styling lives in Text.")
   bf:SetHeight(394)
   s.refresh = function()
     for _, r in ipairs(rows) do if r.refresh then r:refresh() end end
@@ -2096,8 +2132,22 @@ function C:SetPreviewState(st)
       previewIcon:SetDesaturated(adb.availDesaturate and true or false)
       previewIcon:SetVertexColor(c[1], c[2], c[3])
     else
-      previewIcon:SetDesaturated(previewState == "cooldown")
-      previewIcon:SetVertexColor(1, 1, 1)
+      -- Normal state → mirror the engine's base icon tint (same db fields the bars
+      -- read). Cooldown still desaturates on top of either mode, as the bars do.
+      local mode = adb.iconTintMode or "off"
+      if mode ~= "off" then
+        local c = adb.iconTintColor or { 1, 1, 1 }
+        local s = adb.iconTintStrength; if s == nil then s = 1 end
+        s = (s < 0 and 0) or (s > 1 and 1) or s
+        local wash = (mode == "wash") and s or 0
+        if previewState == "cooldown" then wash = 1 end   -- cooldown desaturates regardless
+        if previewIcon.SetDesaturation then previewIcon:SetDesaturation(wash)
+        else previewIcon:SetDesaturated(wash > 0) end
+        previewIcon:SetVertexColor(1 + (c[1] - 1) * s, 1 + (c[2] - 1) * s, 1 + (c[3] - 1) * s)
+      else
+        previewIcon:SetDesaturated(previewState == "cooldown")
+        previewIcon:SetVertexColor(1, 1, 1)
+      end
     end
   end
   local isRing = RING_TINT[previewState] ~= nil
