@@ -1,8 +1,10 @@
 # Gloom's Bars — Session Handoff
 
-## ★★★ SESSION 17 (2026-07-25) — MODIFIER SYMBOLS DROPPED · NEW FEATURE: BASE ICON TINT. Released as `v1.1.0`.
-**Read this first.** Two things happened: the last carried GB decision was CLOSED (as won't-do), and a new
-user-facing feature was built from a cold question. **No open bugs. Nothing is carried into the next session.**
+## ★★★ SESSION 17 (2026-07-25) — MODIFIER SYMBOLS DROPPED · NEW FEATURE: BASE ICON TINT · ONE SHIPPED BUG, FIXED.
+**Read this first.** Three things happened: the last carried GB decision was CLOSED (as won't-do), a new
+user-facing feature was built from a cold question, and **that feature shipped with a real bug in `v1.1.0`
+that the owner caught immediately — see PART C, which is the most reusable thing in this record.**
+**No open bugs.** One thing is carried, and it is the owner's call: the general form of the PART C trap.
 
 ### PART A — Modifier symbols (⌘⇧⌃⌥): DROPPED, won't do.
 The owner's call after asking for a read on the approach *before* any code was written. Full record + the
@@ -30,6 +32,31 @@ across three handoffs. Reading the code first turned a planned session into a on
   What a weird choice."* ★ **He is right and it generalizes: group controls by what they DO to the button,
   never by which engine function they happen to call.** Grouping by shared plumbing is the engine's logic
   leaking into the UI. Cooldown & availability keeps a one-line pointer in its hint.
+
+### PART C — ★★★ THE BUG THAT SHIPPED IN `v1.1.0`, AND THE TRAP EVERY FUTURE PRESET FIELD WILL HIT.
+**Symptom (the owner, minutes after the release): the tint applied to EVERY bar, ignoring per-bar preset
+assignment.** Fixed + owner-verified (*"now only showing up on the preset I was actually editing"*).
+- **ROOT CAUSE — read this before adding ANY new `PRESET_FIELDS` entry.** A preset snapshot taken before a
+  field existed has **no key** for it, and `pv()` (Skin.lua:34) falls back to the WORKING COPY when a snapshot
+  lacks a field. That fallback is right for `LoadPreset` (forward-compat with partial saves, and documented as
+  such at Core.lua:261) but **WRONG at render time**, where it means "every bar shows the edit preset's
+  value." So a brand-new preset field appears GLOBAL until every preset has been re-saved. Nothing was
+  corrupted; the old presets were simply silent on a setting that didn't exist when they were saved.
+- **FIX:** a backfill in Core.lua's saved-var load writes an explicit value into every saved preset that lacks
+  one. **Backfilled to the DEFAULT (tint off), never to the working copy** — a preset saved before the feature
+  existed was visually a preset with no tint, and copying the working copy would bake the current colour into
+  all of them. Idempotent (only touches nil), so it cannot re-run or undo an edit. The edit preset keeps its
+  colour because its snapshot has a real value.
+- **★★ MY PROCESS FAILURE, worth more than the fix:** I wrote "per-bar for free — it's in PRESET_FIELDS, so it
+  rides preset→bar assignment with no extra work" into the handoff, the commit message and the release, and
+  **never tested that claim.** It was true of the READ PATH and false of existing DATA. The architecture note
+  was right; the migration it implied was missing. **A claim about how a new field behaves for EXISTING saved
+  data is a claim about migration — verify it against a real profile with more than one preset, or don't make it.**
+- **⚠ STILL OPEN, the owner's call (raised, not acted on):** the same fallback applies to **older** fields, so
+  any preset silent on any field renders the working copy for it. Fixing it generally (backfill everything
+  missing, or make `pv` fall back to defaults rather than `GB.db` when a ctx is active) **could visibly change
+  how existing presets look**, which is why it was NOT done unannounced right after a release. It wants its own
+  session where each field can be reasoned about.
 
 ### ★★ TWO VERIFIED CLIENT FACTS worth keeping (both read off Blizzard's 12.0.7 source on disk):
 1. **Textures carry a FLOAT desaturation, not just the boolean.** `icon:SetDesaturation(0.5)` is real —

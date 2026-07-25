@@ -714,6 +714,27 @@ loader:SetScript("OnEvent", function(_, event, arg1)
       GB.db.profiles = {}
       GB.db.charProfiles = {}
     end
+    -- ★★ Backfill the icon-tint fields into every SAVED preset (session 17 bugfix).
+    -- WHY THIS IS NEEDED — the trap to remember when adding ANY new PRESET_FIELD:
+    -- a preset snapshot taken before a field existed simply has no key for it, and
+    -- `pv()` (Skin.lua) falls back to the WORKING COPY when a snapshot lacks a
+    -- field. At render time that fallback means "every bar shows the edit preset's
+    -- value" — so a brand-new field appears to apply GLOBALLY, ignoring per-bar
+    -- preset assignment, until every preset has been re-saved. The owner hit exactly
+    -- this: tinting one preset green tinted every bar.
+    -- Backfilled to the DEFAULT (tint off), never to the working copy — a preset
+    -- saved before the feature existed was, visually, a preset with no tint, and
+    -- copying the working copy would bake the current colour into all of them.
+    -- Idempotent: once a preset has the key, it is never touched again.
+    if GB.db.profiles then
+      for _, prof in pairs(GB.db.profiles) do
+        for _, snap in pairs((prof and prof.presets) or {}) do
+          if snap.iconTintMode == nil then snap.iconTintMode = "off" end
+          if snap.iconTintStrength == nil then snap.iconTintStrength = 1 end
+          if snap.iconTintColor == nil then snap.iconTintColor = { 0.5, 1, 0.5 } end
+        end
+      end
+    end
   elseif event == "PLAYER_LOGIN" then
     -- Bind this character to its profile. A character's FIRST login creates
     -- its OWN profile — "Name - Realm", the GloomsAuras convention (the owner,
