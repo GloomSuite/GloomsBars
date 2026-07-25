@@ -35,7 +35,7 @@ GB.Config = C
 -- actionable sentence instead.
 -- ★ BUMP SKIN_NEEDS IN THE SAME COMMIT that first calls a newer widget.
 -- --------------------------------------------------------------------------
-local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 3
+local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 4
 
 local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
 if not Skin or (skinMinor or 0) < SKIN_NEEDS then
@@ -2367,6 +2367,16 @@ local function buildRailPane(parent)
 
   local X, W = 14, RAIL_W - 28   -- content column inset + width
 
+  -- The Gb mark + wordmark (LibGloomSkin MINOR 4). Bars was the ONE tab with no
+  -- header at all — its rail opened straight onto PROFILE while Overlays led
+  -- with its mark. Everything below is therefore anchored 48px lower than it
+  -- was, which is exactly the header's height (divider at -48).
+  UI.tabHeader(rail, {
+    texture = "Interface\\AddOns\\GloomsBars\\Media\\ui\\logo.png",
+    label   = "GLOOM'S BARS",
+    x       = X,
+  })
+
   -- PROFILE and PRESET both drive LibGloomSkin's shared profileBlock (MINOR 3):
   -- header + dropdown + New/Copy/Rename/Delete + an inline note line. The owner,
   -- 2026-07-24: this mechanism must be IDENTICAL across the suite, so GB, GA and
@@ -2403,9 +2413,9 @@ local function buildRailPane(parent)
       delete   = "Deletes this profile (you'll be asked to confirm). Characters using it fall back to another profile. The last profile can't be deleted.",
     },
   })
-  profBlock.frame:SetPoint("TOPLEFT", X, -12)
+  profBlock.frame:SetPoint("TOPLEFT", X, -60)
 
-  local div = hLine(rail); div:SetPoint("TOPLEFT", X, -132); div:SetPoint("TOPRIGHT", -X, -132)
+  local div = hLine(rail); div:SetPoint("TOPLEFT", X, -180); div:SetPoint("TOPRIGHT", -X, -180)
 
   -- PRESET block (the edit target). No Copy — "New preset" already starts from
   -- the current look — so the shared block lays its buttons out 3-across.
@@ -2437,7 +2447,7 @@ local function buildRailPane(parent)
       delete   = "Deletes this preset (you'll be asked to confirm). Bars assigned to it fall back to another preset. The last preset can't be deleted.",
     },
   })
-  presetBlock.frame:SetPoint("TOPLEFT", X, -144)
+  presetBlock.frame:SetPoint("TOPLEFT", X, -192)
 
   local railRefresh = function()
     profBlock:refresh(); presetBlock:refresh()
