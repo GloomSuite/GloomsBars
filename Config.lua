@@ -356,42 +356,9 @@ end
 
 -- (flatEditBox comes from LibGloomSkin — see the toolkit block at the top.)
 
--- Small skinned text-entry dialog (GloomsAuras pattern — avoids StaticPopup's
--- default chrome). onAccept(name) fires on OK / Enter; ESC closes.
-local nameDlgFrame, nameDlgBox, nameDlgTitle, nameDlgOnAccept
-local function BuildNameDialog()
-  local W, H = 300, 132
-  local f = CreateFrame("Frame", "GloomsBarsNameDialog", UIParent)
-  f:SetSize(W, H); f:SetPoint("CENTER"); f:SetFrameStrata("FULLSCREEN_DIALOG"); f:EnableMouse(true)
-  skinPlate(f)
-  nameDlgTitle = newText(f, FONT.title, 17, COLOR.purple, "CENTER")
-  nameDlgTitle:SetPoint("TOP", 0, -14)
-  nameDlgBox = flatEditBox(f, W - 48, 24); nameDlgBox:SetPoint("TOP", 0, -50)
-  local okB = flatButton(f, 100, 26, COLOR.purple, "OK", 13); okB:SetPoint("BOTTOMLEFT", 26, 16)
-  local cancelB = flatButton(f, 100, 26, COLOR.heroic, "Cancel", 13); cancelB:SetPoint("BOTTOMRIGHT", -26, 16)
-  local function accept()
-    local name = nameDlgBox:GetText()
-    local cb = nameDlgOnAccept; nameDlgOnAccept = nil
-    f:Hide()
-    if cb then cb(name) end
-  end
-  local function cancel() nameDlgOnAccept = nil; f:Hide() end
-  okB:SetScript("OnClick", accept)
-  cancelB:SetScript("OnClick", cancel)
-  nameDlgBox:SetScript("OnEnterPressed", accept)
-  nameDlgBox:SetScript("OnEscapePressed", cancel)
-  tinsert(UISpecialFrames, "GloomsBarsNameDialog")
-  f:Hide()
-  nameDlgFrame = f
-end
-local function OpenNameDialog(titleText, initial, onAccept)
-  if not nameDlgFrame then BuildNameDialog() end
-  nameDlgOnAccept = onAccept
-  nameDlgTitle:SetText(titleText or "Name")
-  nameDlgBox:SetText(initial or ""); nameDlgBox:SetCursorPosition(0)
-  nameDlgFrame:Show(); nameDlgFrame:Raise()
-  nameDlgBox:SetFocus(); nameDlgBox:HighlightText()
-end
+-- (The skinned text-entry dialog GB used to carry privately is LibGloomSkin's
+-- UI.nameDialog as of MINOR 3 — GB's only callers were the rail's profile and
+-- preset blocks, which are now the shared UI.profileBlock and open it themselves.)
 
 -- (attachTip — the family-styled hover tooltip — comes from LibGloomSkin;
 -- see the toolkit block at the top.)
@@ -2252,58 +2219,11 @@ local function animParamRow(bf, yTop, id, param, onChange)
   return { h = 0, refresh = function() end, setEnabled = function() end, setShown = function() end }
 end
 
--- A generic dropdown flyout (short lists, no scroll) — options = { {value,label}, .. }.
--- Modelled on the font flyout: a full-screen catcher closes it on any outside click.
-local animFlyout
-local function animFlyoutFrame()
-  if animFlyout then return animFlyout end
-  local catcher = CreateFrame("Button", nil, container)
-  catcher:SetFrameStrata("FULLSCREEN"); catcher:SetAllPoints(UIParent); catcher:Hide()
-  local fly = CreateFrame("Frame", nil, catcher)
-  fly:SetFrameStrata("FULLSCREEN_DIALOG"); skinPlate(fly); addEdges(fly, COLOR.rim, 1)
-  catcher:SetScript("OnClick", function() catcher:Hide() end)
-  fly.catcher, fly.rows = catcher, {}
-  animFlyout = fly
-  return fly
-end
-local function openAnimFlyout(anchor, options, current, onPick)
-  local fly = animFlyoutFrame()
-  local ROW_H, y = 22, -3
-  for i, opt in ipairs(options) do
-    local row = fly.rows[i]
-    if not row then
-      row = CreateFrame("Button", nil, fly); row:SetHeight(ROW_H)
-      row.hl = row:CreateTexture(nil, "BACKGROUND"); row.hl:SetAllPoints(); row.hl:SetColorTexture(1, 1, 1, 0.07); row.hl:Hide()
-      row:SetScript("OnEnter", function(self) self.hl:Show() end)
-      row:SetScript("OnLeave", function(self) self.hl:Hide() end)
-      row.text = newText(row, FONT.body, 12, TEXT, "LEFT"); row.text:SetPoint("LEFT", 8, 0); row.text:SetPoint("RIGHT", -8, 0); row.text:SetWordWrap(false)
-      fly.rows[i] = row
-    end
-    row:ClearAllPoints(); row:SetPoint("TOPLEFT", 3, y); row:SetPoint("TOPRIGHT", -3, y)
-    row.text:SetText(opt.label)
-    if opt.value == current then row.text:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b) else row.text:SetTextColor(1, 1, 1) end
-    row:SetScript("OnClick", function() fly.catcher:Hide(); onPick(opt.value) end)
-    row:Show()
-    y = y - ROW_H
-  end
-  for i = #options + 1, #fly.rows do fly.rows[i]:Hide() end
-  fly:SetSize(math.max(anchor:GetWidth(), 150), #options * ROW_H + 6)
-  fly:ClearAllPoints(); fly:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -2)
-  fly.catcher:Show()
-end
-local function animDropdown(parent, w, getLabel, getOptions, getCurrent, onPick)
-  local b = flatButton(parent, w, 22, COLOR.heroic, "", 11); b:SetBase(0.2); b.text:SetWordWrap(false)
-  -- Inset the label so long names truncate (…) instead of running under the
-  -- caret (the owner: "Gloomfury - Stormrage" collided). Justify stays centered.
-  b.text:ClearAllPoints(); b.text:SetPoint("LEFT", 8, 0); b.text:SetPoint("RIGHT", -18, 0); b.text:SetJustifyH("CENTER")
-  local car = b:CreateTexture(nil, "ARTWORK"); car:SetTexture(CARET_TEX)   -- ▾ down-caret (same asset as the accordion)
-  car:SetVertexColor(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b)
-  car:SetSize(8, 8); car:SetPoint("RIGHT", -8, 0); car:SetRotation(CARET_DOWN)
-  function b:refresh() self.text:SetText(getLabel()) end
-  b:SetScript("OnClick", function() openAnimFlyout(b, getOptions(), getCurrent(), function(v) onPick(v); b:refresh() end) end)
-  b:refresh()
-  return b
-end
+-- The dropdown (a flat button + orange caret opening a flyout of rows) is
+-- LibGloomSkin's shared widget as of MINOR 3 (Phase E) — same signature as the
+-- private copy it replaces, so every call site below is unchanged. Gloom's
+-- Overlays drives its profile picker with the same one.
+local animDropdown = UI.dropdown
 
 -- Animations section: State chips -> Animation dropdown (one per state, or None) -> the
 -- selected animation's params. Params for each module are pre-built (hidden) at the same
@@ -2415,126 +2335,88 @@ local function buildRailPane(parent)
 
   local function sortedNames(t)
     local o = {}
-    for name in pairs(t or {}) do o[#o + 1] = { value = name, label = name } end
-    table.sort(o, function(a, b) return a.label < b.label end)
+    for name in pairs(t or {}) do o[#o + 1] = name end
+    table.sort(o)
     return o
   end
-  local function profNames() return sortedNames(GB.db and GB.db.profiles) end
-  local function presetNames() local prof = GB:ActiveProfile(); return sortedNames(prof and prof.presets) end
   local function editName() local prof = GB:ActiveProfile(); return (prof and prof.edit) or "?" end
 
-  local railRefresh   -- fwd-declared upvalue; assigned once both dropdowns exist
-  local msgLine       -- inline feedback (name taken / can't delete the last one)
-  local function note(text) msgLine:SetText(text or "") end
-  -- Two-click destructive confirm (no popup): first click arms, second fires.
-  local function confirmable(b, label, fn)
-    b:SetScript("OnClick", function()
-      if b._armed then
-        b._armed = nil; b:SetText(label); fn()
-      else
-        b._armed = true; b:SetText("Sure?")
-        C_Timer.After(3, function() if b._armed then b._armed = nil; b:SetText(label) end end)
-      end
-    end)
-  end
-
   local X, W = 14, RAIL_W - 28   -- content column inset + width
-  local function railButton(x, y, w, label)
-    local b = flatButton(rail, w, 20, COLOR.heroic, label, 11); b:SetBase(0.2)
-    b:SetPoint("TOPLEFT", x, y)
-    return b
-  end
 
-  -- PROFILE block.
-  local ph = newText(rail, FONT.head, 12, MUTE, "LEFT"); ph:SetPoint("TOPLEFT", X, -12); ph:SetText("PROFILE")
-  local pdd = animDropdown(rail, W,
-    function() return GB:ActiveProfileName() or "?" end,
-    profNames,
-    function() return GB:ActiveProfileName() end,
-    function(v) note(""); GB:SetActiveProfile(v); railRefresh() end)
-  pdd:SetPoint("TOPLEFT", X, -30)
+  -- PROFILE and PRESET both drive LibGloomSkin's shared profileBlock (MINOR 3):
+  -- header + dropdown + New/Copy/Rename/Delete + an inline note line. The owner,
+  -- 2026-07-24: this mechanism must be IDENTICAL across the suite, so GB, GA and
+  -- Overlays all use this one control. It also retires GB's two-click "Sure?"
+  -- delete — once armed there was no way to back out short of closing the addon;
+  -- deletes now go through the shared confirm modal, which has a Cancel.
+  local profBlock = UI.profileBlock(rail, W, {
+    noun   = "profile",
+    names  = function() return sortedNames(GB.db and GB.db.profiles) end,
+    active = function() return GB:ActiveProfileName() or "?" end,
+    switch = function(v) GB:SetActiveProfile(v) end,
+    create = function(name)
+      if not GB:CreateProfile(name) then return false, "A profile with that name already exists." end
+      GB:SetActiveProfile(name); return true
+    end,
+    copy = function(name)
+      if not GB:CopyProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
+      GB:SetActiveProfile(name); return true
+    end,
+    rename = function(name)
+      if not GB:RenameProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
+      return true
+    end,
+    delete = function()
+      if not GB:DeleteProfile(GB:ActiveProfileName()) then return false, "Can't delete the last profile." end
+      return true
+    end,
+    onChange = function() C:Refresh() end,
+    tips = {
+      dropdown = "The active profile for this character. Each character remembers its own; the profile library is shared account-wide.",
+      new      = "Creates a profile starting from the current look, and switches to it.",
+      copy     = "Duplicates this profile — presets, bar assignments and all — and switches to the copy.",
+      rename   = "Renames this profile. Characters using it follow the new name.",
+      delete   = "Deletes this profile (you'll be asked to confirm). Characters using it fall back to another profile. The last profile can't be deleted.",
+    },
+  })
+  profBlock.frame:SetPoint("TOPLEFT", X, -12)
 
-  local bw = (W - 4) / 2   -- 2×2 button grid
-  local pNew  = railButton(X, -58, bw, "New")
-  local pCopy = railButton(X + bw + 4, -58, bw, "Copy")
-  local pRen  = railButton(X, -82, bw, "Rename")
-  local pDel  = railButton(X + bw + 4, -82, bw, "Delete")
-  pNew:SetScript("OnClick", function()
-    OpenNameDialog("New profile", "", function(name)
-      if name == "" then return end
-      if GB:CreateProfile(name) then GB:SetActiveProfile(name); railRefresh()
-      else note("A profile with that name already exists.") end
-    end)
-  end)
-  pCopy:SetScript("OnClick", function()
-    local active = GB:ActiveProfileName()
-    OpenNameDialog("Copy profile", (active or "") .. " copy", function(name)
-      if name == "" then return end
-      if GB:CopyProfile(active, name) then GB:SetActiveProfile(name); railRefresh()
-      else note("A profile with that name already exists.") end
-    end)
-  end)
-  pRen:SetScript("OnClick", function()
-    local active = GB:ActiveProfileName()
-    OpenNameDialog("Rename profile", active or "", function(name)
-      if name == "" then return end
-      if GB:RenameProfile(active, name) then C:Refresh()
-      else note("A profile with that name already exists.") end
-    end)
-  end)
-  confirmable(pDel, "Delete", function()
-    if not GB:DeleteProfile(GB:ActiveProfileName()) then note("Can't delete the last profile.") end
-    C:Refresh()
-  end)
-  attachTip(pdd, "Profile", "The active profile for this character. Each character remembers its own; the profile library is shared account-wide.")
-  attachTip(pNew, "New profile", "Creates a profile starting from the current look, and switches to it.")
-  attachTip(pCopy, "Copy profile", "Duplicates this profile — presets, bar assignments and all — and switches to the copy.")
-  attachTip(pRen, "Rename profile", "Renames this profile. Characters using it follow the new name.")
-  attachTip(pDel, "Delete profile", "Deletes this profile (click twice to confirm). Characters using it fall back to another profile. The last profile can't be deleted.")
+  local div = hLine(rail); div:SetPoint("TOPLEFT", X, -132); div:SetPoint("TOPRIGHT", -X, -132)
 
-  local div = hLine(rail); div:SetPoint("TOPLEFT", X, -114); div:SetPoint("TOPRIGHT", -X, -114)
+  -- PRESET block (the edit target). No Copy — "New preset" already starts from
+  -- the current look — so the shared block lays its buttons out 3-across.
+  local presetBlock = UI.profileBlock(rail, W, {
+    noun   = "preset",
+    title  = "PRESET (BEING EDITED)",
+    names  = function() local prof = GB:ActiveProfile(); return sortedNames(prof and prof.presets) end,
+    active = editName,
+    switch = function(v) GB:SwitchPreset(v) end,
+    create = function(name)
+      if not GB:CreatePreset(name) then return false, "A preset with that name already exists." end
+      return true
+    end,
+    rename = function(name)
+      if not GB:RenamePreset(editName(), name) then return false, "A preset with that name already exists." end
+      return true
+    end,
+    delete = function()
+      if not GB:DeletePreset(editName()) then return false, "Can't delete the last preset." end
+      return true
+    end,
+    onChange = function() C:Refresh() end,
+    tips = {
+      dropdown = "The look being edited — every control in the middle panel edits this preset, and it saves automatically as you edit. Picking another preset swaps the whole look.",
+      -- No Copy button by design: CreatePreset (Core.lua) snapshots the current
+      -- look, so New IS copy-current and a Copy button would duplicate it.
+      new      = "Creates a preset starting as a copy of the current look, and makes it the one being edited. (This is why there's no separate Copy — New already copies.)",
+      rename   = "Renames this preset. Bars assigned to it follow the new name.",
+      delete   = "Deletes this preset (you'll be asked to confirm). Bars assigned to it fall back to another preset. The last preset can't be deleted.",
+    },
+  })
+  presetBlock.frame:SetPoint("TOPLEFT", X, -144)
 
-  -- PRESET block (the edit target).
-  local sh = newText(rail, FONT.head, 12, MUTE, "LEFT"); sh:SetPoint("TOPLEFT", X, -126); sh:SetText("PRESET (BEING EDITED)")
-  local sdd = animDropdown(rail, W,
-    editName,
-    presetNames,
-    editName,
-    function(v) note(""); GB:SwitchPreset(v); railRefresh() end)
-  sdd:SetPoint("TOPLEFT", X, -144)
-
-  local tw = (W - 8) / 3   -- 3-across button row
-  local sNew = railButton(X, -172, tw, "New")
-  local sRen = railButton(X + tw + 4, -172, tw, "Rename")
-  local sDel = railButton(X + 2 * (tw + 4), -172, tw, "Delete")
-  sNew:SetScript("OnClick", function()
-    OpenNameDialog("New preset", "", function(name)
-      if name == "" then return end
-      if GB:CreatePreset(name) then railRefresh()
-      else note("A preset with that name already exists.") end
-    end)
-  end)
-  sRen:SetScript("OnClick", function()
-    OpenNameDialog("Rename preset", editName(), function(name)
-      if name == "" then return end
-      if GB:RenamePreset(editName(), name) then C:Refresh()
-      else note("A preset with that name already exists.") end
-    end)
-  end)
-  confirmable(sDel, "Delete", function()
-    if not GB:DeletePreset(editName()) then note("Can't delete the last preset.") end
-    C:Refresh()
-  end)
-  attachTip(sdd, "Preset", "The look being edited — every control in the middle panel edits this preset, and it saves automatically as you edit. Picking another preset swaps the whole look.")
-  attachTip(sNew, "New preset", "Creates a preset starting as a copy of the current look, and makes it the one being edited.")
-  attachTip(sRen, "Rename preset", "Renames this preset. Bars assigned to it follow the new name.")
-  attachTip(sDel, "Delete preset", "Deletes this preset (click twice to confirm). Bars assigned to it fall back to another preset. The last preset can't be deleted.")
-
-  msgLine = newText(rail, FONT.body, 11, MUTE, "LEFT")
-  msgLine:SetPoint("TOPLEFT", X, -200); msgLine:SetPoint("RIGHT", rail, "RIGHT", -X, 0); msgLine:SetJustifyH("LEFT")
-
-  railRefresh = function()
-    pdd:refresh(); sdd:refresh()
+  local railRefresh = function()
+    profBlock:refresh(); presetBlock:refresh()
     -- Re-point the preset-focus highlight at the newly-selected edit preset's bars
     -- (no-op if the highlight is off).
     if GB.Skin and GB.Skin.RefreshPresetHighlight then GB.Skin:RefreshPresetHighlight() end
@@ -2640,18 +2522,22 @@ local function buildLayoutSection(bf, s)
   -- open (the same QoL the old "Apply to bars" grid had, now keyed to selBar).
   presetdd:HookScript("OnEnter", function() if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(selBar, true) end end)
   presetdd:HookScript("OnLeave", function()
-    if animFlyout and animFlyout:IsShown() and animFlyout.gbPingBar == selBar then return end
+    local fly = UI.flyout()
+    -- IsVisible, not IsShown: the flyout is a child of the click-catcher and is
+    -- only ever hidden VIA that parent, so its own shown flag stays true.
+    if fly:IsVisible() and fly.gbPingBar == selBar then return end
     if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(selBar, false) end
   end)
   presetdd:HookScript("OnClick", function()
-    if not (animFlyout and animFlyout:IsShown()) then return end
-    if animFlyout.gbPingBar and animFlyout.gbPingBar ~= selBar and GB.Skin then
-      GB.Skin:PingBar(animFlyout.gbPingBar, false)   -- a different bar was selected when last opened
+    local fly = UI.flyout()
+    if not fly:IsVisible() then return end
+    if fly.gbPingBar and fly.gbPingBar ~= selBar and GB.Skin then
+      GB.Skin:PingBar(fly.gbPingBar, false)   -- a different bar was selected when last opened
     end
-    animFlyout.gbPingBar = selBar
-    if not animFlyout.gbPingHooked then
-      animFlyout.gbPingHooked = true
-      animFlyout:HookScript("OnHide", function(f)
+    fly.gbPingBar = selBar
+    if not fly.gbPingHooked then
+      fly.gbPingHooked = true
+      fly:HookScript("OnHide", function(f)
         if f.gbPingBar and GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(f.gbPingBar, false) end
         f.gbPingBar = nil
       end)
