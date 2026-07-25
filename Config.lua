@@ -25,7 +25,31 @@ GB.Config = C
 -- against the cold-pair blank-text quirk); the bar ENGINE keeps GB.FONT (GB's
 -- own paths) — see Core.lua. Surface pinned in GloomsHub/docs/CONTRACTS.md §4.
 -- --------------------------------------------------------------------------
-local Skin = LibStub("LibGloomSkin-1.0")
+-- --------------------------------------------------------------------------
+-- ★ SHARED-TOOLKIT VERSION GATE — see GloomsHub/docs/CONTRACTS.md §6.
+-- LibGloomSkin lives in GloomsHub and GROWS: each MINOR adds widgets this file
+-- may call. WoW's "## Dependencies: GloomsHub" only checks that the Hub is
+-- PRESENT, never that it is NEW ENOUGH — so a Hub a release or two behind would
+-- let this file load and then die on the first nil widget, spraying Lua errors
+-- at someone who has no idea what a MINOR is. Check first, and fail with ONE
+-- actionable sentence instead.
+-- ★ BUMP SKIN_NEEDS IN THE SAME COMMIT that first calls a newer widget.
+-- --------------------------------------------------------------------------
+local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 3
+
+local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
+if not Skin or (skinMinor or 0) < SKIN_NEEDS then
+  local found = Skin and ("v" .. tostring(skinMinor or 0)) or "none"
+  local warn = CreateFrame("Frame")
+  warn:RegisterEvent("PLAYER_LOGIN")
+  warn:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    print("|cffff7729Gloom's Bars:|r please update |cff936bffGloom's Hub|r. This version of "
+      .. "Bars needs a newer Hub toolkit (needs v" .. SKIN_NEEDS .. ", found " .. found
+      .. "), so the BARS tab is unavailable. Your action bars keep working normally.")
+  end)
+  return   -- chunk-level return: the tab is never registered; the bar ENGINE is untouched
+end
 local UI = Skin.UI
 local COLOR, FONT = Skin.COLOR, Skin.FONT
 local TEXT, MUTE = COLOR.text, COLOR.mute       -- lib tokens (promoted from the old locals)
