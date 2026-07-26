@@ -1,5 +1,94 @@
 # Gloom's Bars — Session Handoff
 
+## ★★★ SESSION 18 (2026-07-26) — THE BARS-MOVE BUG: SOLVED, SHIPPED IN `v1.1.2`. ALL QA'd ON LIVE.
+**Read this first.** A bug we believed was a 12.1 PTR problem turned out to be **latent in shipped GB
+all along**, and the recorded diagnosis for it was **wrong on two counts**. Three symptoms collapsed
+into one root cause; the fix is on `main`, released, and owner-verified on live.
+**No open bugs from this session.** The Edit Mode caveat in PART D is accepted, not outstanding.
+
+### PART A — ★★ IT WAS NEVER A 12.1 BUG. Check "does this reproduce on live?" BEFORE trusting a PTR frame.
+The suite ledger had this filed as a 12.1 regression across two findings. It reproduces on **live 12.0.7**
+on any character whose bars still sit at their **Edit Mode default positions**. The owner had simply never
+used GB layout on such a character — every character he plays had bars dragged off default years ago, which
+made Blizzard skip them. **A PTR-only symptom is a hypothesis, not a finding**, and it costs one login on a
+neglected alt to test. Anyone the suite is shared with starts on a default layout, so this was shipped-and-broken
+for every new user.
+
+### PART B — ★★★ THE ROOT CAUSE, AND THE THREE THEORIES IT KILLED.
+`EditModeActionBarMixin:UpdateVisibility` ends by calling `EditModeManagerFrame:UpdateActionBarLayout(self)`
+→ `UpdateBottomActionBarPositions()`, which re-anchors **EVERY** bottom-anchored bar in one pass, guarded by
+`if bar:IsShown() and bar:IsInDefaultPosition()`. Bottom-anchored = bars 1/2/3 + Pet + Stance
+(`EditModeUtil.lua:8`). Two GB facts turned that into the symptoms:
+1. **Our re-assert post-hooks were PER BAR**, so one bar's visibility pass silently moved the others and only
+   the one whose method ran got put back. The owner's repro: **targeting a dummy** made the PET bar re-check
+   visibility, which moved action bars 1–3 — and **hovering a bar snapped only THAT bar back**, because
+   hovering pokes its own hook. That asymmetry is the tell, and it is what named the bug.
+2. **We hung the grid off the BAR FRAME**, which Blizzard re-anchors and re-scales at will — including in
+   combat, where our hard wall forbids answering. Hence "jumps on every pull, returns when combat ends."
+
+**Killed by test — do NOT revive (all three were written down as fact somewhere):**
+- *"GB's post-hooks are dead on 12.1 / Forbidden Aspects blocks them."* **False.** All 40 installed and fired;
+  `UpdateVisibility` fired 42× in one measured window. This was the leading theory and the session's starting
+  instruction, and it was wrong within minutes of a probe.
+- *"GB's `vis` overrides provoke Blizzard's visibility + grid passes."* **False.** Reproduced on a profile with
+  `vis=nil` on all ten bars.
+- *"`EDIT_MODE_LAYOUTS_UPDATED` not firing on exit is the cause."* Real 12.1 change, but only ever the
+  *recovery* half — the ticker (`80743ee`) already covers it.
+
+★ **Method that cracked it, per the debugging protocol: TRAP THE WRITE.** `hooksecurefunc` on `SetPoint` /
+`ClearAllPoints` / `SetScale` for every bar frame and container, deduplicated **by caller** (not by bar) with
+`debugstack`. Blizzard named itself in one reload. Grouping by bar first produced a report that scrolled out
+of the owner's chat buffer — **dedupe diagnostic output by CALLER and list the affected objects beside it.**
+
+### PART C — WHY WE DIDN'T JUST CLEAR BLIZZARD'S FLAG (the tempting fix — rejected on evidence).
+`isInDefaultPosition` is the whole switch: clear it and Blizzard skips the bar forever. Dragging a bar once
+inside Edit Mode clears it, which the owner confirmed **in both directions** (cleared → bars hold through
+combat; reset to default → symptom returns). But:
+- It is written **ONLY** in `EditModeManagerFrameMixin:UpdateSystemAnchorInfo`, reachable only from Edit
+  Mode's own drag / nudge / magnetism. There is **no event-driven route**, so Blizzard can never notice our
+  move from its own untainted context — an addon can only write it directly.
+- Writing it taints the value, and it is read on every pass at `if bar:IsShown() and bar:IsInDefaultPosition()`
+  — tainting the loop that then calls `ClearAllPoints`/`SetPoint` on **every other** bottom bar. In combat
+  those are protected calls, so the realistic failure is intermittent *"Interface action failed because of an
+  AddOn"* on bars we never touched. **Rejected; do not "just try it".**
+- Also proven: `MainActionBar:IsProtected()` → **true**. GB may never re-anchor a bar frame in combat, so
+  "react faster" was never available at any hook position.
+
+### PART D — THE FIX (`afd0957`, released as `v1.1.2`). Three parts, all in `Layout.lua`.
+1. **Hook the GLOBAL reposition pass once** — `UpdateBottomActionBarPositions` / `UpdateRightActionBarPositions`
+   on `EditModeManagerFrame` — and re-assert every bar, instead of relying on per-bar hooks.
+2. **Repair in the SAME frame, not the next one.** `queueApply` defers to the next frame, so one frame rendered
+   at Blizzard's position — a visible flicker on every target change ("untenable"). `reassertPositions()` re-anchors
+   just the positioned frames inline; the full re-apply still follows next frame.
+3. **★ THE DURABLE ONE: a bar GB positions anchors its CONTAINERS to `UIParent`, not to the bar frame**, and
+   divides the frame's scale out of the container scale. Blizzard may move or rescale the frame freely — the
+   buttons no longer care. **Containers stay CHILDREN of the frame**, so show/hide, alpha and the
+   vehicle/override visibility rules inherit exactly as before; only the anchor and scale changed. The frame is
+   then sized and placed over its own grid so Edit Mode's selection box still lands on the buttons.
+   Bars GB does NOT position are untouched (old code path).
+- **Nothing in `Skin.lua` / `Glows.lua` / `Anims.lua` references `.container` or the bar frame** (grep-verified) —
+  they hang off the BUTTON, so tints, glows and animations moved with it for free. Owner-verified: flyouts,
+  glows, tints, animations all unaffected on a configured character.
+- **ACCEPTED, not a bug:** while Edit Mode is OPEN, Blizzard's grid pass re-anchors containers back onto the
+  frame, so a default-position bar visibly returns to Blizzard's spot until Edit Mode closes. GB stands down
+  inside Edit Mode by design and restores on exit. The owner accepted this rather than have GB wrestle Edit Mode.
+- **Built and thrown away:** an orange in-UI notice naming bars Blizzard would reclaim. Correct for two hours,
+  then made *untrue* by part 3 and removed the same session. Fine — but note the shape: a fix that explains a
+  limitation dies when the limitation does.
+
+### PART E — PROCESS (the owner's, and it is the carried item).
+- **The PTR split is RETIRED.** `~/GloomsBars-ptr`, `12.1-layout` and `container-position` are gone; both
+  clients load `~/GloomsBars` on `main`, like the other three addons. A bug the PTR merely *exposed* is a live
+  bug, and waiting for launch buys nothing.
+- **★ THE OWNER'S REAL PAIN, raised at the end and NOT yet resolved: the per-repo SESSION rule.** Being told to
+  open GloomsBars in one Claude session and GloomsAuras in another is the fragmentation he feels — not the repo
+  count, which he explicitly does not care about. He fears knowledge not crossing between them, **and this
+  session is evidence for him**: the ledger's stated root cause was wrong, and trusting it would have produced a
+  fix for a bug that did not exist. **One session can hold all four repos — this one read, edited, committed and
+  pushed GloomsHub from a GloomsBars session.** He has taken a written brief to the Hub asking for a single
+  workspace, a routing rule that requires NAMING the target repo instead of switching sessions, and findings
+  marked tested-vs-suspected. **Expect the Hub's CLAUDE.md routing rule to change; don't re-entrench it here.**
+
 ## ★★★ SESSION 17 (2026-07-25) — MODIFIER SYMBOLS DROPPED · NEW FEATURE: BASE ICON TINT · ONE SHIPPED BUG, FIXED.
 **Read this first.** Three things happened: the last carried GB decision was CLOSED (as won't-do), a new
 user-facing feature was built from a cold question, and **that feature shipped with a real bug in `v1.1.0`
