@@ -273,6 +273,15 @@ local function applyBar(barKey)
       if e.y - e.px < minY then minY = e.y - e.px end
     end
     local left, top = c.posX - maxX / 2, c.posY + (-minY) / 2
+    -- Keep the FRAME over its own buttons. Nothing hangs off it any more, but
+    -- Edit Mode draws its selection box from the frame — left at Blizzard's spot
+    -- it would label a patch of empty screen while the buttons it names sit
+    -- elsewhere. Sizing it to the grid also keeps flyout direction honest.
+    if maxX > 0 and minY < 0 then
+      barFrame:SetSize(maxX / rel, -minY / rel)
+      barFrame:ClearAllPoints()
+      barFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / rel, top / rel)
+    end
     for _, e in ipairs(shown) do
       -- SetPoint offsets live in the anchored frame's own scaled space.
       local s = e.cont:GetEffectiveScale() / UIParent:GetEffectiveScale()
@@ -373,41 +382,6 @@ function Layout:Reassert(barKey)
   end
   if InCombatLockdown() then pending = true; return end
   applyBar(barKey)
-end
-
--- Which of OUR positioned bars will Blizzard keep dragging back?
---
--- Blizzard re-lays the bars it still considers its own on a schedule we cannot
--- fully intercept: EditModeManager.lua's bottom/right passes, guarded by
--- `bar:IsShown() and bar:IsInDefaultPosition()`. That flag is only cleared when
--- the user MOVES the bar inside Edit Mode — there is no event-driven route that
--- would let Blizzard notice our move from its own code, and writing the flag from
--- here would taint the very loop that re-anchors every other bottom bar, which in
--- combat means blocked actions on bars we never touched. So we do not fight it:
--- we DETECT it and say so (see the Bar layout section).
---
--- Reading IsInDefaultPosition is safe — reading a Blizzard value taints only us.
--- Returns a list of bar labels; empty means nothing needs the user's attention.
-function Layout:BarsBlizzardWillReclaim()
-  local out = {}
-  if not layoutOn() then return out end
-  for _, bar in ipairs(GB.BARS) do
-    local key = bar.buttonPrefix
-    local c = conf(key)
-    if c and c.posX ~= nil and c.posY ~= nil then   -- only bars WE have positioned
-      local bf = barFrameFor(key)
-      -- Only the bars Blizzard's own passes actually touch: the bottom-anchored
-      -- set (bars 1-3 + pet/stance) and the right-anchored pair (EditModeUtil.lua:3).
-      local eu = _G.EditModeUtil
-      local managed = bf and eu and (
-        (eu.IsBottomAnchoredActionBar and eu:IsBottomAnchoredActionBar(bf)) or
-        (eu.IsRightAnchoredActionBar and eu:IsRightAnchoredActionBar(bf)))
-      if managed and bf.IsInDefaultPosition and bf:IsInDefaultPosition() then
-        out[#out + 1] = bar.label or key
-      end
-    end
-  end
-  return out
 end
 
 -- Re-anchor ONLY the bar frames that carry a GB position, and do it SYNCHRONOUSLY.
