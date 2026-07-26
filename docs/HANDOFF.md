@@ -11,8 +11,39 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
-**Last updated:** 2026-07-26 (evening) · **Shipped: `v1.2.0`** · **No open bugs.**
+**Last updated:** 2026-07-26 (late) · **Shipped: `v1.2.0`** · **One open bug — see below.**
 Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
+
+---
+
+## ⚠ OPEN BUG — the skin's frame-level stack blocks Quick Keybind Mode (2026-07-26)
+
+**Full record and evidence: `~/GloomsHub/docs/FINDINGS.md` §8. Don't restate it here.** What belongs
+in this file is the GB-side reasoning.
+
+`Skin.lua:1378` raises `TextOverlayContainer` to `btn:GetFrameLevel() + 4`. That is **deliberate and
+still correct in intent** — it is the top of a stack the skin depends on:
+
+| Layer | Level | Set at |
+|---|---|---|
+| plate gradient | `+1` | `Skin.lua:1224` |
+| decor | `+2` | `Skin.lua:1292` |
+| glow / overlay | `+3` | `Skin.lua:790`, `:2715` |
+| **`TextOverlayContainer`** | **`+4`** | **`Skin.lua:1378`** |
+| cooldown-and-above | `+5` | `Skin.lua:1753` |
+
+The comment at `Skin.lua:790` records the intent — *"above icon, below text (TextOverlayContainer =
++4)"*. **Do not "fix" this by lowering the container**; hotkey and count text would fall behind the
+skin, which is the problem this stack exists to prevent.
+
+The defect is that the container is **mouse-enabled** and now outranks the button for mouse focus,
+so Quick Keybind Mode — which listens on the button — never receives the hover. Proven with
+`/fstack`: focus lands on `ActionButton10.TextOverlayContainer` at level 56 while `ActionButton10`
+sits at 52. The likely fix is `EnableMouse(false)` on the container, keeping the level raise intact.
+
+**★ Establish FIRST whether it reproduces on LIVE.** GB is symlinked into both clients. FINDINGS §3
+is the precedent — same shape, looked like a 12.1 regression, turned out to be a latent live bug the
+PTR merely exposed. That answer decides urgency; the fix is the easy part.
 
 ---
 
