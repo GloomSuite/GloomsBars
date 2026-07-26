@@ -11,8 +11,30 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
-**Last updated:** 2026-07-26 · **Shipped: `v1.1.2`** (verified against the published release, not
-copied) · **No open bugs.**
+**Last updated:** 2026-07-26 (evening) · **Shipped: `v1.2.0`** · **No open bugs.**
+Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
+
+---
+
+## ★ FONT WRITES ARE GUARDED — `GB.SetFontSafe` (2026-07-26)
+
+**`SetFont` RAISES on a missing font asset; it does not return false.** Every `if not
+fs:SetFont(…)` guard in the suite was written on the opposite assumption, so the fallback never ran
+and the raise escaped into the caller. Use **`GB.SetFontSafe(fs, path, size, flags)`** (`Core.lua`)
+for every font write in this repo — it `pcall`s, falls back to the bundled `GB.FONT.label`, and
+returns whether the requested face applied.
+
+**Why the bar engine specifically.** Hotkey / count / name faces resolve from a user-chosen **LSM
+name**, and LSM will hand back a path whose file is gone: `Fetch(…, true)`'s silent-nil rescue only
+fires when the lookup MISSES, and a name registered for a missing file *hits*. The Hub's own Media
+tab can create exactly that — it cannot verify files, because WoW exposes no filesystem API. Applied
+at the four engine writes in `Skin.lua` (hotkey / count / name / the size-normalising write), at
+`PreloadFonts`, and at the two `Config.lua` guards. Owner-QA'd 2026-07-26: a dead LSM font selected
+for keybind text falls back visibly instead of raising, and combat is unaffected.
+
+⚠ **`Config.lua` now declares `SKIN_NEEDS = 5`** — it branches on `UI.setFont`'s return value, which
+only exists from LibGloomSkin MINOR 5. Against an older Hub that return is `nil`, so
+`if not setFont(…)` would take the fallback branch every single time. See the Hub's CONTRACTS §4/§6.
 
 ---
 

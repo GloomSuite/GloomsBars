@@ -973,7 +973,7 @@ local function ApplyHotkeyOverride(btn)
   hk:SetSize(icon:GetWidth(), hkSize + 4)
   hk:SetJustifyH("CENTER")
   applyTextShadow(hk, conf.shadow, false)   -- BEFORE SetFont (font-object priming)
-  hk:SetFont(resolveFont(conf.font), hkSize, conf.flags or "OUTLINE")
+  GB.SetFontSafe(hk, resolveFont(conf.font), hkSize, conf.flags or "OUTLINE")
   if conf.color then hk:SetTextColor(unpack(conf.color)) end
   -- ★ Pet keybind colour re-assert. Blizzard's ActionButton_UpdateRangeIndicator
   -- (fired CONTINUOUSLY by PetActionBarMixin:OnUpdate's rangeTimer, ~5/s) recolours
@@ -1049,7 +1049,7 @@ local function ApplyCountOverride(btn)
     cnt:SetJustifyH("RIGHT")
   end
   applyTextShadow(cnt, conf.shadow, false)   -- BEFORE SetFont (font-object priming)
-  cnt:SetFont(resolveFont(conf.font), scaledFontSize(btn, conf.size or 14), conf.flags or "OUTLINE")
+  GB.SetFontSafe(cnt, resolveFont(conf.font), scaledFontSize(btn, conf.size or 14), conf.flags or "OUTLINE")
   if conf.color then cnt:SetTextColor(unpack(conf.color)) end
   rec.cntOverridden = true
 end
@@ -1137,7 +1137,7 @@ local function ApplyNameOverride(btn)
   nm:SetSize(icon:GetWidth(), nmSize + 4)
   nm:SetJustifyH("CENTER")
   applyTextShadow(nm, conf.shadow, true)   -- legacy default ON (Blizzard bakes one); BEFORE SetFont
-  nm:SetFont(resolveFont(conf.font), nmSize, conf.flags or "OUTLINE")
+  GB.SetFontSafe(nm, resolveFont(conf.font), nmSize, conf.flags or "OUTLINE")
   if conf.color then nm:SetTextColor(unpack(conf.color)) end
   rec.nmOverridden = true
 end
@@ -1519,7 +1519,7 @@ local function styleCooldownText(btn)
     return
   end
   applyTextShadow(fs, conf.shadow, true)   -- legacy default ON (Blizzard bakes one); BEFORE SetFont
-  fs:SetFont(resolveFont(conf.font), scaledFontSize(btn, conf.size or 16), conf.flags or "OUTLINE")   -- normalize to button size
+  GB.SetFontSafe(fs, resolveFont(conf.font), scaledFontSize(btn, conf.size or 16), conf.flags or "OUTLINE")   -- normalize to button size
   local c = conf.color or { 1, 1, 1 }
   fs:SetTextColor(c[1], c[2], c[3])
   fs:ClearAllPoints()

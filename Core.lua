@@ -457,6 +457,24 @@ GB.FONT = {
   label = FONT_DIR .. "GeneralSans-Semibold.ttf",
 }
 
+-- ★ SetFont RAISES on a missing font asset — it does NOT return false. Proven
+-- in-client 2026-07-26 (GloomsHub FINDINGS §2 and §5); every
+-- `if not fs:SetFont(…)` guard in the suite was written on the opposite
+-- assumption, so its fallback never ran and the raise escaped into the caller.
+-- This matters to the BAR ENGINE specifically because hotkey/count/name faces
+-- come from a user-chosen LSM *name*, and LSM will hand back a path whose file
+-- is gone — the asset was deleted, or the Hub's own media catalog registered a
+-- name for a .ttf that isn't there. The name resolves, so `Fetch(…, true)`'s
+-- silent-nil fallback never trips and a dead path reaches SetFont. Guard every
+-- write. Returns true if the requested face applied.
+function GB.SetFontSafe(fs, path, size, flags)
+  flags = flags or ""
+  local ok, applied = pcall(fs.SetFont, fs, path, size, flags)
+  if ok and applied ~= false then return true end   -- nil counts as success; only an explicit false is a refusal
+  pcall(fs.SetFont, fs, GB.FONT.label, size, flags)  -- bundled, ships with the addon
+  return false
+end
+
 -- Our bundled fonts exposed to LibSharedMedia under friendly names, so they show
 -- in GB's own font picker alongside every other addon's LSM fonts (and become
 -- usable by other LSM-aware addons — same idea as StoneTweaks). Name → path.
@@ -503,7 +521,7 @@ local function PreloadFonts()
     for _, size in ipairs({ 11, 14 }) do
       local fs = warmer:CreateFontString(nil, "OVERLAY")
       fs:SetPoint("TOPLEFT")
-      if fs:SetFont(path, size, "") then
+      if GB.SetFontSafe(fs, path, size, "") then
         fs:SetText("Ag")
         fs:GetStringWidth()
       end

@@ -35,7 +35,7 @@ GB.Config = C
 -- actionable sentence instead.
 -- ★ BUMP SKIN_NEEDS IN THE SAME COMMIT that first calls a newer widget.
 -- --------------------------------------------------------------------------
-local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 4
+local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 5   -- 5: setFont must RETURN success (the font picker branches on it)
 
 local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
 if not Skin or (skinMinor or 0) < SKIN_NEEDS then
@@ -187,7 +187,10 @@ local function openFontFlyout(anchor, current, onPick)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", 0, y); row:SetPoint("TOPRIGHT", 0, y)
     row.text:SetText(name)
-    if not row.text:SetFont(fontPath(name), 14, "") then row.text:SetFont(FONT.body, 13, "") end
+    -- setFont is the lib's guarded helper: SetFont RAISES on a dead asset, so
+    -- the old `if not row.text:SetFont(…)` never reached this fallback. An LSM
+    -- name CAN resolve to a missing file (see GB.SetFontSafe in Core.lua).
+    if not setFont(row.text, fontPath(name), 14) then setFont(row.text, FONT.body, 13) end
     if name == current then row.text:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b)
     else row.text:SetTextColor(1, 1, 1) end
     row:SetScript("OnClick", function() fly.catcher:Hide(); onPick(name) end)
@@ -217,7 +220,7 @@ local function fontDropdown(parent, w, get, set)
   function b:refresh()
     local n = get() or "GeneralSans SemiBold"
     self.text:SetText(n)
-    if not self.text:SetFont(fontPath(n), 11, "") then self.text:SetFont(FONT.bodyM, 11, "") end
+    if not setFont(self.text, fontPath(n), 11) then setFont(self.text, FONT.bodyM, 11) end
   end
   b:SetScript("OnClick", function() openFontFlyout(b, get(), function(name) set(name); b:refresh() end) end)
   b:refresh()
