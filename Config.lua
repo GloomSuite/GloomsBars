@@ -59,7 +59,14 @@ local CARET_DOWN = UI.CARET_DOWN                -- rotate right-pointing source 
 local setFont, newText, addEdges = UI.setFont, UI.newText, UI.addEdges
 local skinPlate, hLine = UI.skinPlate, UI.hLine
 local flatButton, makeToggle, flatEditBox = UI.flatButton, UI.makeToggle, UI.flatEditBox
-local sliderRow, colorSwatch, dirRow = UI.sliderRow, UI.colorSwatch, UI.dirRow
+local sliderRow, dirRow = UI.sliderRow, UI.dirRow
+-- Each swatch names the element it drives, for the picker's "in use" palette
+-- tooltip. The tool prefix lives HERE rather than at 20 call sites — six of them
+-- read only "Color" on screen, so the section is what tells them apart in that
+-- list. An older Hub simply ignores the extra argument.
+local function colorSwatch(parent, get, set, withAlpha, label)
+  return UI.colorSwatch(parent, get, set, withAlpha, label and ("Bars › " .. label))
+end
 local makeScrollbar, attachTip = UI.makeScrollbar, UI.attachTip
 
 -- Every (Hub font, size) pair this tab draws BEYOND the Hub's own warm list —
@@ -747,7 +754,8 @@ local function buildPlateSection(bf, s)
 
   local colLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); colLbl:SetPoint("TOPLEFT", 18, -78); colLbl:SetText("Plate color")
   local cs = colorSwatch(bf, function() local p = plateData(); return p and p.color end,
-    function(c) local p = ensurePlate(); if p then p.color = c end; local l = gradLayer(); if l then l.color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
+    function(c) local p = ensurePlate(); if p then p.color = c end; local l = gradLayer(); if l then l.color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
+    nil, "Plate color")
   cs.swatch:SetPoint("TOPRIGHT", -18, -77)
 
   -- Fade start: how far the plate colour bleeds up over the icon. Kept in sync with the
@@ -805,7 +813,8 @@ local function buildDecorSection(bf, s)
   local clab = newText(bf, FONT.body, 12, TEXT, "LEFT"); clab:SetPoint("TOPLEFT", 18, -46); clab:SetText("Color")
   local cs = colorSwatch(bf,
     function() local l = gradLayer(); return l and l.color end,
-    function(c) local l = ensureGradLayer(); l.color = c; if plateData() then plateData().color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
+    function(c) local l = ensureGradLayer(); l.color = c; if plateData() then plateData().color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
+    nil, "Gradient fill color")
   cs.swatch:SetPoint("TOPRIGHT", -18, -44)
 
   local bleedRow = sliderRow(bf, -78, "Fade start", 0, 1, 0.05,
@@ -830,7 +839,8 @@ local function buildDecorSection(bf, s)
   local bclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); bclab:SetPoint("TOPLEFT", 18, -198); bclab:SetText("Color")
   local bcs = colorSwatch(bf,
     function() local b = borderData(); return b and b.color end,
-    function(c) local b = ensureBorder(); b.color = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end, true)
+    function(c) local b = ensureBorder(); b.color = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
+    true, "Border color")
   bcs.swatch:SetPoint("TOPRIGHT", -18, -196)
 
   -- Two-tone: a second colour turns the border into a gradient (only the rim
@@ -848,7 +858,8 @@ local function buildDecorSection(bf, s)
   local bc2lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); bc2lab:SetPoint("TOPLEFT", 18, -258); bc2lab:SetText("Color 2")
   local bcs2 = colorSwatch(bf,
     function() local b = borderData(); return b and b.color2 end,
-    function(c) local b = ensureBorder(); b.color2 = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end, true)
+    function(c) local b = ensureBorder(); b.color2 = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
+    true, "Border color 2")
   bcs2.swatch:SetPoint("TOPRIGHT", -18, -256)
 
   local bdirR = dirRow(bf, -288, "Blend dir",
@@ -887,7 +898,8 @@ local function buildDecorSection(bf, s)
   local itcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); itcl:SetPoint("TOPLEFT", 30, -478); itcl:SetText("Tint color")
   local itcs = colorSwatch(bf,
     function() return GB.db and GB.db.iconTintColor end,
-    function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end)
+    function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end,
+    nil, "Icon tint")
   itcs.swatch:SetPoint("TOPRIGHT", -18, -476)
 
   local itStr = sliderRow(bf, -510, "Strength", 0, 1, 0.05,
@@ -972,7 +984,7 @@ local function textStyleGroup(parent, y, dataFn, ensureFn, applyFn, defOn, onFn)
   local scs = colorSwatch(parent,
     function() local sh = shadow(); return sh and sh.color end,
     function(col) local sh = ensureShadow(); if sh then sh.color = col end; applyFn() end,
-    true)   -- opacity-enabled — a soft shadow is half the point
+    true, "Shadow color")   -- opacity-enabled — a soft shadow is half the point
   scs.swatch:SetPoint("TOPRIGHT", -18, y - 92)
 
   local sxRow = sliderRow(parent, y - 126, "Shadow offset X", -8, 8, 1,
@@ -1026,7 +1038,8 @@ local function buildTextSection(bf, s)
   local clab = newText(kb, FONT.body, 12, TEXT, "LEFT"); clab:SetPoint("TOPLEFT", 18, -46); clab:SetText("Color")
   local cs = colorSwatch(kb,
     function() local h = hotkeyData(); return h and h.color end,
-    function(c) local h = ensureHotkey(); h.color = c; reapply() end)
+    function(c) local h = ensureHotkey(); h.color = c; reapply() end,
+    nil, "Keybind color")
   cs.swatch:SetPoint("TOPRIGHT", -18, -44)
 
   local sizeRow = sliderRow(kb, -78, "Size", 6, 28, 1,
@@ -1111,7 +1124,8 @@ local function buildTextSection(bf, s)
   local ctclab = newText(ct, FONT.body, 12, TEXT, "LEFT"); ctclab:SetPoint("TOPLEFT", 18, -46); ctclab:SetText("Color")
   local ctcs = colorSwatch(ct,
     function() local c = countData(); return c and c.color end,
-    function(col) local c = ensureCount(); c.color = col; reapply() end)
+    function(col) local c = ensureCount(); c.color = col; reapply() end,
+    nil, "Count color")
   ctcs.swatch:SetPoint("TOPRIGHT", -18, -44)
 
   local ctSize = sliderRow(ct, -78, "Size", 6, 28, 1,
@@ -1177,7 +1191,8 @@ local function buildTextSection(bf, s)
   local cdclab = newText(cd, FONT.body, 12, TEXT, "LEFT"); cdclab:SetPoint("TOPLEFT", 18, -46); cdclab:SetText("Color")
   local cdcs = colorSwatch(cd,
     function() local c = cdtextData(); return c and c.color end,
-    function(col) local c = ensureCdtext(); c.color = col; reCD() end)
+    function(col) local c = ensureCdtext(); c.color = col; reCD() end,
+    nil, "Countdown color")
   cdcs.swatch:SetPoint("TOPRIGHT", -18, -44)
 
   local cdSize = sliderRow(cd, -78, "Size", 8, 30, 1,
@@ -1235,7 +1250,8 @@ local function buildTextSection(bf, s)
   local nmclab = newText(nm, FONT.body, 12, TEXT, "LEFT"); nmclab:SetPoint("TOPLEFT", 18, -46); nmclab:SetText("Color")
   local nmcs = colorSwatch(nm,
     function() local c = nameData(); return c and c.color end,
-    function(col) local c = ensureName(); c.color = col; reapply() end)
+    function(col) local c = ensureName(); c.color = col; reapply() end,
+    nil, "Name color")
   nmcs.swatch:SetPoint("TOPRIGHT", -18, -44)
 
   local nmSize = sliderRow(nm, -78, "Size", 6, 28, 1,
@@ -1367,7 +1383,8 @@ local function buildCastSection(bf, s)
   local flab = newText(bf, FONT.body, 12, TEXT, "LEFT"); flab:SetPoint("TOPLEFT", 18, -14); flab:SetText("Fill color")
   local fcs = colorSwatch(bf,
     function() return GB.db and GB.db.castFillColor end,
-    function(c) if GB.db then GB.db.castFillColor = c end; showCast() end)
+    function(c) if GB.db then GB.db.castFillColor = c end; showCast() end,
+    nil, "Cast fill color")
   fcs.swatch:SetPoint("TOPRIGHT", -18, -12)
   rows[#rows + 1] = fcs
 
@@ -1388,7 +1405,8 @@ local function buildCastSection(bf, s)
   local cclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); cclab:SetPoint("TOPLEFT", 18, -136); cclab:SetText("Complete color")
   local ccs = colorSwatch(bf,
     function() return GB.db and GB.db.castCompleteColor end,
-    function(c) if GB.db then GB.db.castCompleteColor = c end end)
+    function(c) if GB.db then GB.db.castCompleteColor = c end end,
+    nil, "Cast complete color")
   ccs.swatch:SetPoint("TOPRIGHT", -18, -134)
   rows[#rows + 1] = ccs
 
@@ -1397,7 +1415,8 @@ local function buildCastSection(bf, s)
   local iclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); iclab:SetPoint("TOPLEFT", 18, -202); iclab:SetText("Color")
   local ics = colorSwatch(bf,
     function() return GB.db and GB.db.castInterruptColor end,
-    function(c) if GB.db then GB.db.castInterruptColor = c end end)
+    function(c) if GB.db then GB.db.castInterruptColor = c end end,
+    nil, "Cast interrupt color")
   ics.swatch:SetPoint("TOPRIGHT", -18, -200)
   rows[#rows + 1] = ics
 
@@ -1525,7 +1544,8 @@ local function buildGlowsSection(bf, s)
 
     local cs = colorSwatch(bf,
       function() local t = trig(key); return t and t.color end,
-      function(c) if GB.Glows then GB.Glows:SetTriggerColor(key, c) end; showPrev(prev) end)
+      function(c) if GB.Glows then GB.Glows:SetTriggerColor(key, c) end; showPrev(prev) end,
+      nil, "Glow › " .. label)
     cs.swatch:SetPoint("TOPLEFT", GX_SW, yTop - 1)
 
     local lay = layersCell(bf, GX_LAY, yTop - 1, key, function() showPrev(prev) end)
@@ -1567,7 +1587,8 @@ local function buildCooldownSection(bf, s)
   local cl = newText(bf, FONT.body, 12, TEXT, "LEFT"); cl:SetPoint("TOPLEFT", 18, -14); cl:SetText("Sweep color")
   local cs = colorSwatch(bf,
     function() return GB.db and GB.db.swipeColor end,
-    function(c) if GB.Skin then GB.Skin:SetSwipeColor(c) end; showCD() end)
+    function(c) if GB.Skin then GB.Skin:SetSwipeColor(c) end; showCD() end,
+    nil, "Sweep color")
   cs.swatch:SetPoint("TOPRIGHT", -18, -12); rows[#rows + 1] = cs
 
   local opRow = sliderRow(bf, -46, "Sweep opacity", 0, 1, 0.05,
@@ -1586,7 +1607,8 @@ local function buildCooldownSection(bf, s)
   local fcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); fcl:SetPoint("TOPLEFT", 30, -122); fcl:SetText("Flash color")
   local fcs = colorSwatch(bf,
     function() return GB.db and GB.db.finishFlashColor end,
-    function(c) if GB.Skin then GB.Skin:SetFinishFlashColor(c) end; C:PlayPreviewFlash() end)
+    function(c) if GB.Skin then GB.Skin:SetFinishFlashColor(c) end; C:PlayPreviewFlash() end,
+    nil, "Finish flash color")
   fcs.swatch:SetPoint("TOPRIGHT", -18, -120); rows[#rows + 1] = fcs
 
   -- AVAILABILITY — restyle Blizzard's usable/unusable/out-of-mana icon tint.
@@ -1599,12 +1621,14 @@ local function buildCooldownSection(bf, s)
   local ul = newText(bf, FONT.body, 12, TEXT, "LEFT"); ul:SetPoint("TOPLEFT", 18, -226); ul:SetText("Unusable tint")
   local ucs = colorSwatch(bf,
     function() return GB.db and GB.db.availUnusable end,
-    function(c) if GB.Skin then GB.Skin:SetAvailUnusable(c) end end)
+    function(c) if GB.Skin then GB.Skin:SetAvailUnusable(c) end end,
+    nil, "Unusable tint")
   ucs.swatch:SetPoint("TOPRIGHT", -18, -224); rows[#rows + 1] = ucs
   local ml = newText(bf, FONT.body, 12, TEXT, "LEFT"); ml:SetPoint("TOPLEFT", 18, -256); ml:SetText("Out-of-mana tint")
   local mcs = colorSwatch(bf,
     function() return GB.db and GB.db.availOOM end,
-    function(c) if GB.Skin then GB.Skin:SetAvailOOM(c) end end)
+    function(c) if GB.Skin then GB.Skin:SetAvailOOM(c) end end,
+    nil, "Out-of-mana tint")
   mcs.swatch:SetPoint("TOPRIGHT", -18, -254); rows[#rows + 1] = mcs
 
   -- Out of range: tint the icon to match Blizzard's red out-of-range keybind.
@@ -1616,7 +1640,8 @@ local function buildCooldownSection(bf, s)
   local rcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); rcl:SetPoint("TOPLEFT", 30, -318); rcl:SetText("Range color")
   local rcs = colorSwatch(bf,
     function() return GB.db and GB.db.rangeColor end,
-    function(c) if GB.Skin then GB.Skin:SetRangeColor(c) end end)
+    function(c) if GB.Skin then GB.Skin:SetRangeColor(c) end end,
+    nil, "Out-of-range tint")
   rcs.swatch:SetPoint("TOPRIGHT", -18, -316); rows[#rows + 1] = rcs
 
   local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
@@ -2225,7 +2250,8 @@ local function animParamRow(bf, yTop, id, param, onChange)
   if param.kind == "color" then
     local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 30, yTop); lab:SetText(param.label)
     local cs = colorSwatch(bf, function() return animGet(id, param.key) end,
-      function(c) animSet(id, param.key, c); onChange() end)
+      function(c) animSet(id, param.key, c); onChange() end,
+      nil, "Animation › " .. param.label)
     cs.swatch:SetPoint("TOPRIGHT", -18, yTop + 1)
     return { h = 30, refresh = function() cs:refresh() end,
       setEnabled = function(on) cs.swatch:SetEnabled(on); cs.swatch:SetAlpha(on and 1 or 0.4); lab:SetAlpha(on and 1 or 0.4) end,

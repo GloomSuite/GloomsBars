@@ -16,6 +16,23 @@ Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-
 
 ---
 
+## Colour swatches carry a LABEL (2026-07-26)
+
+`Config.lua` wraps `UI.colorSwatch` in a local that prefixes **`"Bars › "`**, so each of the 20 call
+sites passes only its own short name (`"Border color"`, `"Glow › " .. label`). Those names are what
+the Hub's colour picker lists as *where a colour is in use*. **Six of GB's swatches read only
+"Color" on screen** — the section prefix is what tells them apart in that list, so keep new labels
+section-qualified.
+
+★ **GB needs no colour ENUMERATOR, unlike GA and Overlays.** Its colours are **one per PROFILE**
+(`GB.db.styleData`, `GB.db.triggers`, `GB.db.*`), not one per bar — so a plain getter already
+describes them completely. Verified 2026-07-26; an earlier claim that these were per-bar was wrong.
+
+`SKIN_NEEDS` stays **5**: passing the extra label argument is ignored by an older Hub.
+**Contract in `~/GloomsHub/docs/CONTRACTS.md` §4.**
+
+---
+
 ## ★ FONT WRITES ARE GUARDED — `GB.SetFontSafe` (2026-07-26)
 
 **`SetFont` RAISES on a missing font asset; it does not return false.** Every `if not
