@@ -1683,7 +1683,7 @@ The owner chose to defer these to keep wiring the sub-panels; revisit after brea
 - Count/Name per-style overrides; more layer kinds (border, badge, top plate).
 - Pet/stance/extra-action/vehicle bars; minimap button + icon art (`## IconTexture`).
 - ★ **WoWup install test on a second machine (NOT the owner's — would clobber the dev symlink).** This is
-  now the suite's ONE open Phase G QA item; the script lives in `~/GloomsHub/docs/HANDOFF.md`. The symlink
+  now the suite's ONE open Phase G QA item; the script lives in `~/GloomsHub/docs/ARCHIVE.md`. The symlink
   hazard is real and confirmed: all four AddOns entries point straight into the dev repos, so a WoWup
   install on this machine writes over live source unless the symlinks are moved aside first.
 - Late-phase: coexistence QA with ArcUI/EQOL re-enabled.
