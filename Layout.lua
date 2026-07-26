@@ -87,6 +87,28 @@ watcher:SetScript("OnEvent", function(_, event)
   end
 end)
 
+-- 12.1 (Midnight) stopped firing EDIT_MODE_LAYOUTS_UPDATED on Edit Mode EXIT, so
+-- the re-apply above never ran: the bars just stayed wherever Blizzard's show-all
+-- left them until something ELSE happened to trigger us (a /reload, a zone change,
+-- picking up an action). Verified on 12.1.0.68914 and confirmed ABSENT on 12.0.7
+-- retail, so this is a real 12.1 change, not a PTR artifact.
+--
+-- IsEditModeActive() itself still reports correctly on BOTH clients (proven — it
+-- read "closed" right after exit on 12.1), so we watch it directly for the
+-- true->false edge instead of trusting the event.
+--
+-- Deliberately ADDITIVE and version-agnostic: the event registration above is
+-- untouched, so on a client where it still fires we simply have two triggers —
+-- and queueApply() coalesces them into ONE ApplyAll on the next frame. ApplyAll
+-- is itself gated on combat and on Edit Mode being open, so a redundant call is
+-- a no-op return. No version check needed; the same code is correct on both.
+local editModeWasOpen = false
+C_Timer.NewTicker(0.5, function()
+  local open = editModeOpen()
+  if editModeWasOpen and not open then queueApply() end
+  editModeWasOpen = open
+end)
+
 local function conf(barKey)
   local prof = GB.ActiveProfile and GB:ActiveProfile()
   local t = prof and prof.barLayout
