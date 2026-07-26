@@ -2755,6 +2755,17 @@ local function buildLayoutSection(bf, s)
   hint:SetPoint("TOPLEFT", 18, -406); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
   hint:SetText("Button size scales the WHOLE button proportionally — icon, text, glows — like Edit Mode's size setting. How the icon sits within its button stays a style choice (the Shape & icon section's Size, saved in the preset). Changes made in combat apply the moment combat ends.")
 
+  -- Blizzard keeps control of a bar's position until that bar has been moved once
+  -- inside Edit Mode, and drags it back on every combat entry and every Edit Mode
+  -- open. Clearing that from here would taint the loop that re-anchors every other
+  -- bottom bar (blocked actions in combat, on bars we never touched), so instead
+  -- the addon detects the condition and names the one thing that fixes it.
+  local warn = newText(bf, FONT.body, 11, COLOR.orange, "LEFT")
+  warn:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -10)
+  warn:SetPoint("RIGHT", bf, "RIGHT", -16, 0)
+  warn:SetJustifyH("LEFT")
+  warn:Hide()
+
   selectBar = function(k)
     selBar = k
     for _, c in ipairs(chips) do c.b:SetActive(c.k == k) end
@@ -2794,7 +2805,22 @@ local function buildLayoutSection(bf, s)
     hint:ClearAllPoints()
     hint:SetPoint("TOPLEFT", 18, yOr - 62)
     hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0)
-    bf:SetHeight((multiRow and 522 or 478) + BY)
+    -- Name every bar Blizzard will keep reclaiming, not just the selected one —
+    -- otherwise you'd only find out by clicking through the chips one at a time.
+    local reclaim = (GB.Layout and GB.Layout.BarsBlizzardWillReclaim
+                     and GB.Layout:BarsBlizzardWillReclaim()) or {}
+    local extra = 0
+    if on and #reclaim > 0 then
+      local list = table.concat(reclaim, ", ")
+      warn:SetText(#reclaim == 1
+        and ("Blizzard still controls where " .. list .. " sits, and pulls it back whenever you enter combat or open Edit Mode. To stop that: open Edit Mode, drag that bar anywhere, then Save. Gloom's Bars keeps its own position from then on.")
+        or ("Blizzard still controls where these bars sit and pulls them back whenever you enter combat or open Edit Mode: " .. list .. ". To stop that: open Edit Mode, drag each one anywhere, then Save. Gloom's Bars keeps its own positions from then on."))
+      warn:Show()
+      extra = math.ceil(warn:GetStringHeight()) + 10
+    else
+      warn:Hide()
+    end
+    bf:SetHeight((multiRow and 522 or 478) + BY + extra)
     relayout()
   end
 end

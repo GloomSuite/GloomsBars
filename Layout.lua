@@ -31,6 +31,11 @@ local appliedBars = {}   -- [barKey] = true — bars whose containers we've re-l
 local pending = false    -- a combat-blocked apply; flushed when combat drops
 local gridVisible = false   -- an action is on the cursor (SHOWGRID) — empty-button collapse suspends
 
+-- True while GB itself is writing bar anchors. Our own re-anchor can re-enter
+-- Blizzard's global reposition pass (and therefore the hook we install on it),
+-- so every entry point into that hook checks this and bows out.
+local applying = false
+
 -- Edit Mode SHOWS every bar so the user can see/arrange them; our layout must
 -- not fight that (a "Hidden" bar re-hidden mid-edit flickers/blocks the user).
 -- We suspend while it's open and re-apply on EDIT_MODE_LAYOUTS_UPDATED (exit).
@@ -243,6 +248,20 @@ local function applyBar(barKey)
   appliedBars[barKey] = true
 end
 
+-- 12.1 PROBE (temporary): flag GB's own anchor writes so the `/gb anchors` trap
+-- reports only FOREIGN ones. Wrapping rather than editing every return path in
+-- applyBar, so no code path can forget to clear the flag.
+do
+  local raw = applyBar
+  applyBar = function(barKey)
+    local prev = applying
+    applying = true
+    local ok, err = pcall(raw, barKey)
+    applying = prev
+    if not ok then error(err, 0) end
+  end
+end
+
 -- Hand a bar BACK to Edit Mode: reset container scale and ask Blizzard to
 -- re-lay with its own settings (cache invalidated so UpdateGridLayout
 -- actually runs). Out-of-combat only, like every geometry path here.
@@ -281,11 +300,17 @@ function Layout:ApplyAll()
   if InCombatLockdown() then pending = true; return end
   if editModeOpen() then return end   -- suspended while Edit Mode is open (re-applies on its exit)
   local on = layoutOn()
+  -- Flag our own pass: it re-anchors bars, which can re-enter Blizzard's global
+  -- reposition (and therefore the hook that called us). Saved/restored, never
+  -- assigned blindly, so nesting inside applyBar stays correct.
+  local prevApplying = applying
+  applying = true
   for _, bar in ipairs(GB.BARS) do
     local key = bar.buttonPrefix
     if on then applyBar(key)
     elseif appliedBars[key] then releaseBar(key) end
   end
+  applying = prevApplying
 end
 
 -- Per-bar re-assert, used by the Blizzard-side post-hooks and Config setters.
@@ -300,6 +325,70 @@ function Layout:Reassert(barKey)
   end
   if InCombatLockdown() then pending = true; return end
   applyBar(barKey)
+end
+
+-- Which of OUR positioned bars will Blizzard keep dragging back?
+--
+-- Blizzard re-lays the bars it still considers its own on a schedule we cannot
+-- fully intercept: EditModeManager.lua's bottom/right passes, guarded by
+-- `bar:IsShown() and bar:IsInDefaultPosition()`. That flag is only cleared when
+-- the user MOVES the bar inside Edit Mode — there is no event-driven route that
+-- would let Blizzard notice our move from its own code, and writing the flag from
+-- here would taint the very loop that re-anchors every other bottom bar, which in
+-- combat means blocked actions on bars we never touched. So we do not fight it:
+-- we DETECT it and say so (see the Bar layout section).
+--
+-- Reading IsInDefaultPosition is safe — reading a Blizzard value taints only us.
+-- Returns a list of bar labels; empty means nothing needs the user's attention.
+function Layout:BarsBlizzardWillReclaim()
+  local out = {}
+  if not layoutOn() then return out end
+  for _, bar in ipairs(GB.BARS) do
+    local key = bar.buttonPrefix
+    local c = conf(key)
+    if c and c.posX ~= nil and c.posY ~= nil then   -- only bars WE have positioned
+      local bf = barFrameFor(key)
+      -- Only the bars Blizzard's own passes actually touch: the bottom-anchored
+      -- set (bars 1-3 + pet/stance) and the right-anchored pair (EditModeUtil.lua:3).
+      local eu = _G.EditModeUtil
+      local managed = bf and eu and (
+        (eu.IsBottomAnchoredActionBar and eu:IsBottomAnchoredActionBar(bf)) or
+        (eu.IsRightAnchoredActionBar and eu:IsRightAnchoredActionBar(bf)))
+      if managed and bf.IsInDefaultPosition and bf:IsInDefaultPosition() then
+        out[#out + 1] = bar.label or key
+      end
+    end
+  end
+  return out
+end
+
+-- Re-anchor ONLY the bar frames that carry a GB position, and do it SYNCHRONOUSLY.
+-- Blizzard's global reposition pass runs mid-frame; recovering from it via
+-- queueApply (next frame) means one frame renders at Blizzard's position, which
+-- reads as a flicker on every target change (the owner: "untenable"). Undoing it
+-- in the same frame means nothing displaced is ever drawn. Cheap enough to run
+-- inline: at most one ClearAllPoints+SetPoint per positioned bar, no container
+-- or grid work — the full re-assert still follows next frame for everything else.
+local function reassertPositions()
+  if not layoutOn() or editModeOpen() then return end
+  if InCombatLockdown() then pending = true; return end   -- the hard wall stands: queue only
+  local prev = applying
+  applying = true
+  for _, bar in ipairs(GB.BARS) do
+    local key = bar.buttonPrefix
+    local c = conf(key)
+    if c and c.posX ~= nil and c.posY ~= nil then
+      local bf = barFrameFor(key)
+      if bf then
+        local s = bf:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        if s > 0 then
+          bf:ClearAllPoints()
+          bf:SetPoint("CENTER", UIParent, "BOTTOMLEFT", c.posX / s, c.posY / s)
+        end
+      end
+    end
+  end
+  applying = prev
 end
 
 -- ---------------------------------------------------------------------------
@@ -499,22 +588,54 @@ end
 function Layout:Init()
   if self.hooked then return end
   self.hooked = true
+  local function hook(bf, key, method)
+    if type(bf[method]) ~= "function" then return end
+    hooksecurefunc(bf, method, function() Layout:Reassert(key) end)
+  end
   for _, bar in ipairs(GB.BARS) do
     local key = bar.buttonPrefix
     local bf = barFrameFor(key)
     if bf then
-      if bf.UpdateGridLayout then
-        hooksecurefunc(bf, "UpdateGridLayout", function() Layout:Reassert(key) end)
-      end
-      if bf.UpdateShownButtons then
-        hooksecurefunc(bf, "UpdateShownButtons", function() Layout:Reassert(key) end)
-      end
-      if bf.UpdateVisibility then
-        hooksecurefunc(bf, "UpdateVisibility", function() Layout:Reassert(key) end)
-      end
-      if bf.ApplySystemAnchor then   -- Edit Mode re-anchoring → re-assert our position
-        hooksecurefunc(bf, "ApplySystemAnchor", function() Layout:Reassert(key) end)
+      hook(bf, key, "UpdateGridLayout")
+      hook(bf, key, "UpdateShownButtons")
+      hook(bf, key, "UpdateVisibility")
+      hook(bf, key, "ApplySystemAnchor")   -- Edit Mode re-anchoring → re-assert our position
+    end
+  end
+
+  -- ★ Blizzard's bar repositioning is GLOBAL, but our re-assert above is PER BAR.
+  -- EditModeActionBarMixin:UpdateVisibility ends with
+  -- EditModeManagerFrame:UpdateActionBarLayout(self), which calls
+  -- UpdateBottomActionBarPositions() — and that re-anchors EVERY bottom-anchored
+  -- bar it still believes is in its default position (ActionBar.lua:364 →
+  -- EditModeManager.lua:576 → :636, source-verified). Bottom-anchored means bars
+  -- 1/2/3 + Pet + Stance (EditModeUtil.lua:8).
+  --
+  -- So ONE bar's visibility pass silently moves FIVE bars, and the per-bar hooks
+  -- only put back the one whose method ran. The owner's repro: targeting a dummy
+  -- makes the pet bar re-check visibility, which moved action bars 1-2 and left
+  -- them there — and hovering a bar snapped only THAT bar back, because hovering
+  -- pokes its own hook. Hook the global pass once and re-assert everything.
+  --
+  -- queueApply coalesces to ONE ApplyAll next frame, after Blizzard's pass has
+  -- fully settled; the `applying` guard stops our own re-anchor from re-entering
+  -- this and ping-ponging. Still combat-gated inside ApplyAll — in combat this
+  -- only sets `pending`, exactly as before.
+  local emf = EditModeManagerFrame
+  if emf then
+    for _, m in ipairs({ "UpdateBottomActionBarPositions", "UpdateRightActionBarPositions" }) do
+      if type(emf[m]) == "function" then
+        hooksecurefunc(emf, m, function()
+          if applying or releasing then return end
+          -- Position back IMMEDIATELY (same frame, so no flicker), then a full
+          -- re-assert next frame for grid/scale/visibility. Blizzard's pass ends
+          -- with UIParent_ManageFramePositions, which may have re-SCALED the bar,
+          -- so this runs after that and reads the final scale.
+          reassertPositions()
+          queueApply()
+        end)
       end
     end
   end
 end
+
