@@ -196,6 +196,20 @@ local function applyBar(barKey)
       barFrame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", c.posX / s, c.posY / s)
     end
   end
+  -- ★ A bar WE position anchors its containers to the SCREEN, not to the bar
+  -- frame. Blizzard re-anchors and re-scales the bar frame on its own schedule —
+  -- including in combat, where we are not allowed to answer — so a grid hung off
+  -- the frame inherits every one of those moves. Anchored to UIParent, the
+  -- buttons stop caring where Blizzard puts the frame.
+  --
+  -- The containers stay CHILDREN of the bar frame, so show/hide, alpha and the
+  -- vehicle/override visibility rules all still inherit exactly as before; only
+  -- the anchor and the scale change. `rel` is the frame's scale relative to the
+  -- screen — we divide it out so Blizzard rescaling the frame cannot change the
+  -- rendered button size either.
+  local positioned = (c.posX ~= nil and c.posY ~= nil)
+  local rel = barFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+  if not (rel > 0) then rel = 1 end
   local maxN = barMax(barKey)
   local count = math.max(1, math.min(maxN, c.count or maxN))
   local rows = math.max(1, math.min(count, c.rows or 1))
@@ -220,11 +234,22 @@ local function applyBar(barKey)
       end
       cont:SetShown(show)
       local native = cont:GetWidth()   -- unscaled (SetScale never changes it)
-      local scale = (c.size and native > 0) and (c.size / native) or 1
+      local scale, px
+      if positioned then
+        -- Screen-anchored: pick the scale that renders `want` pixels ON SCREEN,
+        -- cancelling the bar frame's own scale. Identical to the branch below
+        -- whenever Blizzard hasn't rescaled the frame (rel == 1).
+        local want = c.size or native
+        scale = (native > 0) and (want / (native * rel)) or 1
+        px = want
+      else
+        scale = (c.size and native > 0) and (c.size / native) or 1
+        px = native * scale
+      end
       cont:SetScale(scale)
       -- A collapsed empty KEEPS its grid slot (a hole, not a shuffle) so the
       -- other buttons never move as slots fill and empty.
-      if inGrid then shown[#shown + 1] = { cont = cont, scale = scale, px = native * scale } end
+      if inGrid then shown[#shown + 1] = { cont = cont, scale = scale, px = px } end
     end
   end
   for idx, e in ipairs(shown) do
@@ -235,16 +260,39 @@ local function applyBar(barKey)
     -- so extreme size+overlap combos can never stack buttons on one spot.
     local stepMain = math.max(e.px + gap, 4)
     local stepCross = math.max(e.px + gapCross, 4)
-    local xBar, yBar
-    if horizontal then xBar, yBar = minor * stepMain, -major * stepCross
-    else xBar, yBar = major * stepCross, -minor * stepMain end
-    e.cont:ClearAllPoints()
-    e.cont:SetPoint("TOPLEFT", barFrame, "TOPLEFT", xBar / e.scale, yBar / e.scale)
+    if horizontal then e.x, e.y = minor * stepMain, -major * stepCross
+    else e.x, e.y = major * stepCross, -minor * stepMain end
+  end
+  if positioned then
+    -- The grid's own bounding box, so we can centre it on the saved position.
+    -- posX/posY has always meant the bar's CENTRE, and it keeps meaning that —
+    -- only the thing we hang off it changes, from the frame to the buttons.
+    local maxX, minY = 0, 0
+    for _, e in ipairs(shown) do
+      if e.x + e.px > maxX then maxX = e.x + e.px end
+      if e.y - e.px < minY then minY = e.y - e.px end
+    end
+    local left, top = c.posX - maxX / 2, c.posY + (-minY) / 2
+    for _, e in ipairs(shown) do
+      -- SetPoint offsets live in the anchored frame's own scaled space.
+      local s = e.cont:GetEffectiveScale() / UIParent:GetEffectiveScale()
+      if s > 0 then
+        e.cont:ClearAllPoints()
+        e.cont:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", (left + e.x) / s, (top + e.y) / s)
+      end
+    end
+  else
+    for _, e in ipairs(shown) do
+      e.cont:ClearAllPoints()
+      e.cont:SetPoint("TOPLEFT", barFrame, "TOPLEFT", e.x / e.scale, e.y / e.scale)
+    end
   end
   -- Re-fit the bar frame to the new grid (ResizeLayoutFrame): keeps Edit
   -- Mode's selection box + the flyout-direction math honest. pcall = fail
-  -- soft; we're out of combat by contract.
-  if barFrame.Layout then pcall(barFrame.Layout, barFrame) end
+  -- soft; we're out of combat by contract. SKIPPED for a screen-anchored bar —
+  -- its containers no longer hang off the frame, so asking the frame to resize
+  -- itself around them would compute nonsense.
+  if barFrame.Layout and not positioned then pcall(barFrame.Layout, barFrame) end
   appliedBars[barKey] = true
 end
 
