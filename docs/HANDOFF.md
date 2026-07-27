@@ -11,18 +11,80 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
-**Last updated:** 2026-07-26 (late) · **Shipped: `v1.2.0`** · **One open bug — see below.**
+**Last updated:** 2026-07-26 (late) · **Shipped: `v1.2.0`** · **No open bugs.**
 Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
 
 ---
 
-## ⚠ OPEN BUG — the skin's frame-level stack blocks Quick Keybind Mode (2026-07-26)
+## ★ Per-action icon overrides — `GB.Icons` (2026-07-26, owner-QA'd)
+
+Swap icon art on GB's action buttons **only**. A custom pack in `Interface/ICONS` is global — the
+same `.tga` feeds bags, spellbook, tooltips and the Cooldown Manager — so padding an icon to survive
+a wide button's crop changes it everywhere. Art registered here is seen by nothing else, so it can be
+padded to exactly the margin the bar's aspect needs.
+
+**Keyed by spellID / itemID, never by art filename.** `GetActionTexture` returns a fileDataID in
+modern retail, so keying by name would need a ~32k mapping table in the addon. `GetActionInfo` gives
+the spellID directly; macros key on the spell the macro currently casts.
+
+| Piece | What it is |
+|---|---|
+| `Icons.lua` | the engine + `/gb icon` command |
+| `IconsManifest.lua` | **GENERATED** index, tracked, **committed EMPTY on purpose** |
+| `tools/build-icon-manifest.sh` | scans `IconsHD/`, rewrites the manifest |
+| `Rebuild Icons.command` | Finder double-click wrapper for the above |
+| `tools/install-icon-watcher.sh` | OPTIONAL LaunchAgent, **not installed** |
+| `IconsHD/` | the art — **gitignored, and the only copy in existence** |
+
+Two sources, **explicit `/gb icon` override beats the manifest**, so a quick experiment always wins.
+Naming: the ID is the **last** `_`/`-` segment (`hunter_mm_aimedshot_19434.tga`); everything before
+it is for the owner's sorting. `i` prefix on the final segment means an item.
+
+**★ WoW exposes NO filesystem API** — an addon cannot list a folder or test whether a file exists.
+That is the whole reason the manifest exists, and it is why a wrong filename yields a **blank icon**
+rather than an error. Never "improve" this by trying paths speculatively.
+
+⚠ **`IconsManifest.lua` is COMMITTED EMPTY and will always show as a local modification.** That is
+deliberate, not drift. It is *tracked* so the file always exists — a TOC entry pointing at a missing
+file risks the addon being flagged corrupt — but a *populated* manifest names art nobody else has, so
+shipping one would give every other installer **blank icons on those exact spells**. **Never commit a
+populated manifest.** The owner's real one regenerates any time from `Rebuild Icons.command`.
+
+Applied from three places in `Skin.lua` — once in `ApplyButton`, and re-applied inside the existing
+`Update` and `UpdateButtonArt` hooks, because Blizzard re-sets the icon on every page flip and slot
+change. With no override GB does not touch the icon at all.
+
+---
+
+## ★ Quick Keybind's gold square — adopted at last (2026-07-26, owner-QA'd)
+
+`QuickKeybindHighlightTexture` was the ONE button-state texture the skin never adopted — its
+siblings (`HighlightTexture`, `CheckedTexture`, `Flash`) are all retextured and anchored — so it drew
+Blizzard's square art at Blizzard's size, proud of every shaped icon, on both clients.
+
+Handled the way GB already handles the other three: **hand shape suppresses it** and a shaped glow
+carries the state; **SDF fallback keeps Blizzard's art** but anchors it to the icon.
+
+- The glow is a built-in `keybind` trigger in `Glows.lua`, **top priority** in `winningTrigger` (while
+  the mode is open you need to see what is bindable, not what is proccing), **non-pulsing**, and
+  **inner-only at 0.6 opacity** — it lights every button at once and holds, so the first attempt at
+  full opacity on both layers read as a wall of gold. Same reasoning as the `selected` seed.
+- Deliberately **not** in the Glows/Anims config lists: it is a mode indicator, not a combat state.
+- ⚠ **Suppression must NOT go in `Skin.lua`'s one-time state-art block.** Blizzard creates that
+  texture only when the mode first opens, so the nil-guard there is never true — it fails silently
+  and looks handled. It is done in `Glows:SetKeybindMode`, a frame after the mode opens.
+- Known edge, matching existing behaviour: **glows off + hand shape → no keybind indicator at all**,
+  exactly as hover/selected/flash already behave.
+
+---
+
+## ✅ CLOSED, NOT A GB BUG — the frame-level stack does NOT block Quick Keybind Mode (2026-07-26)
 
 **Full record and evidence: `~/GloomsHub/docs/FINDINGS.md` §8. Don't restate it here.** What belongs
-in this file is the GB-side reasoning.
+in this file is the GB-side reasoning. **No code change was made, and none is needed.**
 
-`Skin.lua:1378` raises `TextOverlayContainer` to `btn:GetFrameLevel() + 4`. That is **deliberate and
-still correct in intent** — it is the top of a stack the skin depends on:
+`Skin.lua:1378` raises `TextOverlayContainer` to `btn:GetFrameLevel() + 4`. That is **deliberate,
+correct, and now proven harmless** — it is the top of a stack the skin depends on:
 
 | Layer | Level | Set at |
 |---|---|---|
@@ -36,14 +98,28 @@ The comment at `Skin.lua:790` records the intent — *"above icon, below text (T
 +4)"*. **Do not "fix" this by lowering the container**; hotkey and count text would fall behind the
 skin, which is the problem this stack exists to prevent.
 
-The defect is that the container is **mouse-enabled** and now outranks the button for mouse focus,
-so Quick Keybind Mode — which listens on the button — never receives the hover. Proven with
-`/fstack`: focus lands on `ActionButton10.TextOverlayContainer` at level 56 while `ActionButton10`
-sits at 52. The likely fix is `EnableMouse(false)` on the container, keeping the level raise intact.
+### What was claimed, and why it was wrong
+An earlier session claimed the container is **mouse-enabled** and outranks the button for mouse
+focus, so Quick Keybind Mode never receives the hover — "proven with `/fstack`". **Both halves are
+dead** (owner-tested on live, 2026-07-26):
 
-**★ Establish FIRST whether it reproduces on LIVE.** GB is symlinked into both clients. FINDINGS §3
-is the precedent — same shape, looked like a 12.1 regression, turned out to be a latent live bug the
-PTR merely exposed. That answer decides urgency; the fix is the easy part.
+- **The stack is present on LIVE and binding works fine.** Same container at 56 over the same button
+  at 52, gold highlight showing, bind assigns normally. So the raise cannot be what blocks it.
+- **`/fstack`'s `-->` arrow is not mouse focus** — it is the topmost frame under the cursor,
+  mouse-enabled or not. On a button's edge it marks GB's own decor frame (`Skin.lua:1290`), and
+  **`Skin.lua` contains no `EnableMouse` call at all** — that frame cannot hold focus. We therefore
+  have no evidence `TextOverlayContainer` is even mouse-enabled.
+
+**Do not write `EnableMouse(false)` on the container.** It was only ever a guess resting on the
+reading above, and the symptom it targeted is gone from both clients.
+
+**Do not "fix" the stack by lowering the container** either — that part of the old note still
+stands, and for the original reason: hotkey and count text would fall behind the skin.
+
+The symptom itself was real on the PTR and is now **non-reproducible there too**. Prime suspect is
+the competing UI suite on that client (FINDINGS §4), which has already manufactured one convincing
+false 12.1 bug — though its action-bars module was already disabled at the time, so the cause is
+genuinely unknown. **Nothing to do in this repo unless it comes back with new evidence.**
 
 ---
 
@@ -125,62 +201,10 @@ The full investigation is in [ARCHIVE.md](ARCHIVE.md) (SESSION 18) and the suite
 
 ---
 
-## ▶▶ NO OPEN GB BUGS. All three session-14 bugs resolved (details in SESSION 15). Two were Blizzard behaviour:
-1. **Hidden bars return → LEFT (mostly Blizzard).** the owner reproduced it with GB fully DISABLED on native
-   Blizzard bars: pet detach / walking out of range flashes ALL hidden bars visible until back in range.
-   Two layers: (a) Blizzard flashing them — UNFIXABLE, native does it; (b) GB slow to re-hide (the Layout
-   watcher doesn't listen for UNIT_PET / PLAYER_CONTROL_*). The owner chose "leave it — good enough." Do NOT
-   re-open as a GB defect. If ever revisited, the only fixable part is registering the pet-detach events on
-   the Layout watcher (Layout.lua ~line 51) to narrow the lingering window. ([[hidden-bars-return-mostly-blizzard]])
-2. **Pet autocast "white dot" → WON'T-FIX (Blizzard's RANGE_INDICATOR).** It appears on TARGET (the owner found
-   it's targeting, not combat) — it's Blizzard's range dot working as intended, NOT an unbound-key leftover.
-   The owner dropped it. The session-14 line-981 `hk:GetText()=="●"` hide still lingers (a harmless half-fix);
-   optional one-line removal if tidying. Do NOT chase it. ([[pet-dot-is-range-indicator-wontfix]])
-3. **Pet stance glow "stuck" → FIXED as not-a-bug + restyled.** Probe (`/gb petglow`, now removed) proved the
-   pet's STANCE stays checked while it attacks — Kill Command fires a one-off attack ON TOP, it does NOT
-   change the stance. Verified against native Blizzard bars (their glow is just a very subtle yellow interior
-   one). GB now mirrors Blizzard faithfully (no attack-action special-casing) and defaults the "selected"
-   trigger to a SOFT-BLUE INNER-ONLY glow (Core seed `layers="inner"`) so a persistently-lit stance reads
-   quiet. Existing profiles set inner-only in the Glows section; the seed only affects fresh installs.
-   Commit `9080b82`. ([[pet-stance-glow-mirrors-blizzard]])
+## Session-14 bugs and the four owner decisions — ALL CLOSED, moved to the archive
 
-
-## ▶ THE OWNER DECISIONS — ALL FOUR NOW CLOSED (a/b/c/d). Nothing is carried. Kept for the record:
-- (a) "Default" mode label — KEEP "Default" (do NOT relabel to "Blizzard"). CLOSED.
-- (b) Rewrite **CLAUDE.md** — its "pure skin v1 / settled decisions" block is STALE (layout built, profiles
-  exist, pet/stance skinned+laid-out, no-"v1" rule, secure-geometry now in play, RefreshAll combat-gated).
-  Offered across several sessions, not yet done.
-- (c) **Release tag — CLOSED 2026-07-24 (suite Phase G): `v1.0.0` shipped.** It carried everything that
-  had piled up unshipped since v0.2.0 (animations, plate, profiles, layout, 3-panel, minimap, pet/stance,
-  preset-focus highlight, the two in-play bug fixes) **plus the Phase C tab migration**.
-  ⚠ **The old published `v0.2.0` was tagged at a PRE-Phase-C commit** — two Lua files, no config UI, no
-  `## Dependencies: GloomsHub`. It was three phases stale, not merely "unshipped work behind it".
-  **Check what a tag POINTS AT, not just that it exists.** Suite-wide release state:
-  `~/GloomsHub/docs/SUITE-STATE.md`.
-- (d) **Modifier symbols (⌘⇧⌃⌥) don't take outline/shadow — ✅ CLOSED 2026-07-25: DROPPED, WON'T DO.**
-  The owner's call, after reviewing the approach: *"leave the glyphs untouched… juice isn't worth the
-  squeeze. I can deal with no stroke/dropshadow on the glyphs."* **Do not re-propose this**, and do not
-  quietly "fix" it while touching keybind text. The glyphs stay as inline PNGs
-  (`MOD_ICON`/`symbolizeHotkey`, [Skin.lua:826-865](../Skin.lua#L826-L865)), unstyled by design.
-  **Why it was dropped, so nobody re-derives it:**
-  - WoW cannot outline or shadow an inline `|T…|t` texture, and one FontString cannot mix fonts —
-    so the styling can NEVER reach the glyphs on the current path. That much is settled fact.
-  - The approved path (a second FontString in a glyph font) carried an **unstated hard prerequisite**:
-    a bundled font actually containing U+2318/21E7/2303/2325. GB bundles Khand + GeneralSans, both Latin
-    display faces that almost certainly lack all four — so it meant sourcing/subsetting a **new `.ttf`**,
-    which is the suite's ONE genuine full-client-restart case, plus a licensing question.
-  - It also meant duplicating the whole keybind surface on a parallel FontString: zone math
-    (corner/center/extension/plate), `scaledFontSize`, the Midnight font-object shadow priming, the
-    `UpdateHotkeys` re-assert, the pet `SetVertexColor` war, pristine stash/restore, and new
-    pair-centering math. Large surface on the addon's most bug-prone text element.
-  - **The cheaper alternative, if this is ever reopened** (it shouldn't be, absent a new reason): stay in
-    the texture layer — bake outline variants (none/outline/thick) + a black silhouette in
-    `tools/generate-modglyphs.py`, and emit two inline textures per modifier (silhouette offset, glyph on
-    top) via the escape's x/y offset args. No new FontString, no new font, no restart. Its two costs:
-    specifying offsets means giving an explicit height (losing `:0` auto-line-height — `scaledFontSize`
-    has the number), and **shadow COLOUR would stay baked black**, since inline textures take no tint.
-  ([[modifier-symbols-outline-deferred]])
-
+Resolved 2026-07-24/25, archived 2026-07-26. Full text in [ARCHIVE.md](ARCHIVE.md) — including why
+the modifier-symbol outline was DROPPED, which is the one a session might re-propose.
 
 ## ✔ SETTLED (session 7): Blizzard's cooldown EDGE + finish BLING can't be shaped — don't re-attempt.
 The cooldown SWEEP follows the shape via its swipe-texture alpha (works). But the rotating EDGE line and the

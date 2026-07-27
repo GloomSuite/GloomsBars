@@ -12,3 +12,8 @@
 
 # luac -l byproduct
 luac.out
+
+# Personal action-bar icon art (GB.Icons overrides, IconsHD/). NEVER track this.
+# The owner's own media does not ship in the addon — same rule as the suite's
+# fonts and textures. The MECHANISM ships; the art does not.
+/IconsHD/

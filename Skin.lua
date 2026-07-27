@@ -2093,6 +2093,7 @@ function Skin:SetStateWidth(v)
     if btn.GetHighlightTexture then fit(btn:GetHighlightTexture()) end
     if btn.GetCheckedTexture then fit(btn:GetCheckedTexture()) end
     fit(btn.Flash)
+    fit(btn.QuickKeybindHighlightTexture)   -- SDF-only path (handKey returns above)
   end)
 end
 
@@ -2111,6 +2112,7 @@ refreshIconGeometry = function(btn)   -- assigns the forward-declared local (see
   if btn.GetHighlightTexture then fit(btn:GetHighlightTexture()) end
   if btn.GetCheckedTexture then fit(btn:GetCheckedTexture()) end
   fit(btn.Flash)
+  if not handKey() then fit(btn.QuickKeybindHighlightTexture) end   -- hand shape suppresses it instead
   AlignCooldowns(btn)
   ApplyDecor(btn)
 end
@@ -2175,12 +2177,15 @@ local function ApplyButton(btn, bar)
     if btn.HotKey then rec.hkFont = { btn.HotKey:GetFont() }; rec.hkJustify = btn.HotKey:GetJustifyH(); rec.hkColor = { btn.HotKey:GetTextColor() }; rec.hkShadow = captureShadow(btn.HotKey); rec.hkFontObj = btn.HotKey:GetFontObject() end
     if btn.Count then rec.cntFont = { btn.Count:GetFont() }; rec.cntJustify = btn.Count:GetJustifyH(); rec.cntColor = { btn.Count:GetTextColor() }; rec.cntShadow = captureShadow(btn.Count); rec.cntFontObj = btn.Count:GetFontObject() end
     if btn.Name then rec.nmFont = { btn.Name:GetFont() }; rec.nmJustify = btn.Name:GetJustifyH(); rec.nmColor = { btn.Name:GetTextColor() }; rec.nmShadow = captureShadow(btn.Name); rec.nmFontObj = btn.Name:GetFontObject(); rec.nmParent = btn.Name:GetParent() end
+    -- Per-action icon overrides: remember this button as a /gb icon target.
+    if GB.Icons then GB.Icons:HookButton(btn) end
     if btn.UpdateButtonArt then
       hooksecurefunc(btn, "UpdateButtonArt", function(b)
         if Skin.enabled then
           applyIconSize(b)
           Suppress(b)
           AlignCooldowns(b)
+          if GB.Icons then GB.Icons:Apply(b) end   -- Blizzard may have re-set the icon
         end
       end)
     end
@@ -2188,7 +2193,13 @@ local function ApplyButton(btn, bar)
     -- world enter — Update runs on all of them and Hide()s the icon when empty).
     if btn.Update then
       hooksecurefunc(btn, "Update", function(b)
-        if Skin.enabled then applyEmptyAlpha(b) end
+        if Skin.enabled then
+          applyEmptyAlpha(b)
+          -- Update runs on every content refresh (slot change, page flip, world
+          -- enter) and re-sets the icon from the action — re-apply our override
+          -- after it, or the swap survives only until the next page flip.
+          if GB.Icons then GB.Icons:Apply(b) end
+        end
       end)
     end
     if btn.UpdateAssistedCombatRotationFrame then
@@ -2237,6 +2248,7 @@ local function ApplyButton(btn, bar)
     rec.iconMaskRemoved = true
   end
   applyTexCoord(icon)   -- zoom crop, cover-fit to the icon's aspect (part a)
+  if GB.Icons then GB.Icons:Apply(btn) end   -- per-action art override, if one is set
   icon:AddMaskTexture(rec.mask)
   -- Round state art. One-time: originals aren't recoverable without /reload
   -- (Disable() says so). Anchored to the icon oversized by the padding ratio
@@ -2267,6 +2279,14 @@ local function ApplyButton(btn, bar)
       btn.Flash:SetVertexColor(unpack(stateColor("flash"))); btn.Flash:SetAlpha(sa)   -- hand shape → glow drives it
       fit(btn.Flash)
     end
+    -- Quick Keybind Mode's gold square. The ONE button-state texture never adopted
+    -- (API-NOTES lists it; nothing here touched it), so it drew Blizzard's unmasked art
+    -- at Blizzard's size, proud of the shaped icon — owner screenshot, 2026-07-26.
+    -- ★ SDF fallback ONLY. On the hand shape it is suppressed by Glows.lua instead:
+    -- the texture does not exist yet at skin time, so anything done to it here is a
+    -- no-op. ★ The nil check is REQUIRED — this block's `fit` has no guard of its own
+    -- (unlike the other two) and AnchorConstruction dereferences its argument.
+    if btn.QuickKeybindHighlightTexture then fit(btn.QuickKeybindHighlightTexture) end
     -- Blizzard's UpdateFlash re-drives GetCheckedTexture():SetAlpha(1.0) on the
     -- auto-attacking (flashing) button (ActionButton.lua:1306) — defeating our one-
     -- time alpha-0 above and un-hiding the square checked ring over the shaped glow.

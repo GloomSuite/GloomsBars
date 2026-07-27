@@ -1292,6 +1292,10 @@ SlashCmdList.GLOOMSBARS = function(input)
     MaskInfo()
   elseif cmd == "round" then
     ToggleRoundProbe()
+  elseif cmd == "icon" then
+    -- Pass the RAW remainder, not the lowercased two-token capture above:
+    -- filenames keep their case so `/gb icon list` echoes what you typed.
+    GB.Icons:Command((input or ""):match("^%s*%S+%s*(.-)%s*$") or "")
   elseif cmd == "pill" then
     TogglePillProbe()
   elseif cmd == "cdinfo" then

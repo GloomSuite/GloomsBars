@@ -1424,3 +1424,69 @@ default white); (d) "on cooldown" tint was deliberately SKIPPED (the sweep alrea
   Hub embeds it and GB hard-depends on the Hub; see the standalone-consume note above);
   coexistence QA with ArcUI/EQOL re-enabled (our `UpdateUsable`/range/icon-vertex work now touches the icon
   tint — watch for conflicts with other button decorators).
+
+---
+
+## Session-14 bugs + the four owner decisions — CLOSED, moved out of HANDOFF 2026-07-26
+
+Lifted verbatim from `docs/HANDOFF.md`, which had grown past its own ~350-line limit. All of it
+was already closed. ★ Decision **(b)** was still written as unfinished ("offered across several
+sessions, not yet done") under a heading claiming all four were closed — it is now genuinely DONE:
+`CLAUDE.md` carries the framing rule it asked for (no "v1", no "later phase", no "pure skin") and
+describes layout, profiles and geometry throughout.
+
+## ▶▶ NO OPEN GB BUGS. All three session-14 bugs resolved (details in SESSION 15). Two were Blizzard behaviour:
+1. **Hidden bars return → LEFT (mostly Blizzard).** the owner reproduced it with GB fully DISABLED on native
+   Blizzard bars: pet detach / walking out of range flashes ALL hidden bars visible until back in range.
+   Two layers: (a) Blizzard flashing them — UNFIXABLE, native does it; (b) GB slow to re-hide (the Layout
+   watcher doesn't listen for UNIT_PET / PLAYER_CONTROL_*). The owner chose "leave it — good enough." Do NOT
+   re-open as a GB defect. If ever revisited, the only fixable part is registering the pet-detach events on
+   the Layout watcher (Layout.lua ~line 51) to narrow the lingering window. ([[hidden-bars-return-mostly-blizzard]])
+2. **Pet autocast "white dot" → WON'T-FIX (Blizzard's RANGE_INDICATOR).** It appears on TARGET (the owner found
+   it's targeting, not combat) — it's Blizzard's range dot working as intended, NOT an unbound-key leftover.
+   The owner dropped it. The session-14 line-981 `hk:GetText()=="●"` hide still lingers (a harmless half-fix);
+   optional one-line removal if tidying. Do NOT chase it. ([[pet-dot-is-range-indicator-wontfix]])
+3. **Pet stance glow "stuck" → FIXED as not-a-bug + restyled.** Probe (`/gb petglow`, now removed) proved the
+   pet's STANCE stays checked while it attacks — Kill Command fires a one-off attack ON TOP, it does NOT
+   change the stance. Verified against native Blizzard bars (their glow is just a very subtle yellow interior
+   one). GB now mirrors Blizzard faithfully (no attack-action special-casing) and defaults the "selected"
+   trigger to a SOFT-BLUE INNER-ONLY glow (Core seed `layers="inner"`) so a persistently-lit stance reads
+   quiet. Existing profiles set inner-only in the Glows section; the seed only affects fresh installs.
+   Commit `9080b82`. ([[pet-stance-glow-mirrors-blizzard]])
+
+
+## ▶ THE OWNER DECISIONS — ALL FOUR NOW CLOSED (a/b/c/d). Nothing is carried. Kept for the record:
+- (a) "Default" mode label — KEEP "Default" (do NOT relabel to "Blizzard"). CLOSED.
+- (b) Rewrite **CLAUDE.md** — its "pure skin v1 / settled decisions" block is STALE (layout built, profiles
+  exist, pet/stance skinned+laid-out, no-"v1" rule, secure-geometry now in play, RefreshAll combat-gated).
+  Offered across several sessions, not yet done.
+- (c) **Release tag — CLOSED 2026-07-24 (suite Phase G): `v1.0.0` shipped.** It carried everything that
+  had piled up unshipped since v0.2.0 (animations, plate, profiles, layout, 3-panel, minimap, pet/stance,
+  preset-focus highlight, the two in-play bug fixes) **plus the Phase C tab migration**.
+  ⚠ **The old published `v0.2.0` was tagged at a PRE-Phase-C commit** — two Lua files, no config UI, no
+  `## Dependencies: GloomsHub`. It was three phases stale, not merely "unshipped work behind it".
+  **Check what a tag POINTS AT, not just that it exists.** Suite-wide release state:
+  `~/GloomsHub/docs/SUITE-STATE.md`.
+- (d) **Modifier symbols (⌘⇧⌃⌥) don't take outline/shadow — ✅ CLOSED 2026-07-25: DROPPED, WON'T DO.**
+  The owner's call, after reviewing the approach: *"leave the glyphs untouched… juice isn't worth the
+  squeeze. I can deal with no stroke/dropshadow on the glyphs."* **Do not re-propose this**, and do not
+  quietly "fix" it while touching keybind text. The glyphs stay as inline PNGs
+  (`MOD_ICON`/`symbolizeHotkey`, [Skin.lua:826-865](../Skin.lua#L826-L865)), unstyled by design.
+  **Why it was dropped, so nobody re-derives it:**
+  - WoW cannot outline or shadow an inline `|T…|t` texture, and one FontString cannot mix fonts —
+    so the styling can NEVER reach the glyphs on the current path. That much is settled fact.
+  - The approved path (a second FontString in a glyph font) carried an **unstated hard prerequisite**:
+    a bundled font actually containing U+2318/21E7/2303/2325. GB bundles Khand + GeneralSans, both Latin
+    display faces that almost certainly lack all four — so it meant sourcing/subsetting a **new `.ttf`**,
+    which is the suite's ONE genuine full-client-restart case, plus a licensing question.
+  - It also meant duplicating the whole keybind surface on a parallel FontString: zone math
+    (corner/center/extension/plate), `scaledFontSize`, the Midnight font-object shadow priming, the
+    `UpdateHotkeys` re-assert, the pet `SetVertexColor` war, pristine stash/restore, and new
+    pair-centering math. Large surface on the addon's most bug-prone text element.
+  - **The cheaper alternative, if this is ever reopened** (it shouldn't be, absent a new reason): stay in
+    the texture layer — bake outline variants (none/outline/thick) + a black silhouette in
+    `tools/generate-modglyphs.py`, and emit two inline textures per modifier (silhouette offset, glyph on
+    top) via the escape's x/y offset args. No new FontString, no new font, no restart. Its two costs:
+    specifying offsets means giving an explicit height (losing `:0` auto-line-height — `scaledFontSize`
+    has the number), and **shadow COLOUR would stay baked black**, since inline textures take no tint.
+  ([[modifier-symbols-outline-deferred]])

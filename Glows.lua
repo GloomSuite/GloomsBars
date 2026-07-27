@@ -69,8 +69,11 @@ end
 local handGlows = {}   -- [btn] = { outer, innerFrame, inner }
 
 -- The current shape's outer/inner glow art.
+local function handShapeKey()
+  return (GB.Skin and GB.Skin.PV) and GB.Skin:PV("handShape") or (GB.db and GB.db.handShape)
+end
 local function handGlowArt()
-  local key = (GB.Skin and GB.Skin.PV) and GB.Skin:PV("handShape") or (GB.db and GB.db.handShape)
+  local key = handShapeKey()
   if not key then return nil end
   return GB:HandAsset(key, "outer"), GB:HandAsset(key, "inner")
 end
@@ -174,6 +177,26 @@ end
 -- flash/highlight pulse; cast/channel/hover/selected are steady. Always the
 -- multi-part hand glow (db.handShape is always seeded).
 local PULSING = { proc = true, assist = true, flash = true, highlight = true }   -- which triggers pulse
+
+-- Quick Keybind Mode ("this button is bindable"). Deliberately NOT a user trigger: it
+-- is a mode indicator, not a combat state, so it stays out of the Glows/Anims config
+-- lists and carries a built-in gold that preserves Blizzard's meaning. A `keybind`
+-- record in db.triggers still wins if one is ever added.
+--
+-- ★ INNER-ONLY and dimmed, following the `selected` seed (Core.lua:710) — this lights
+-- EVERY button at once and holds, so the full-opacity both-layer version read as a
+-- wall of gold (owner QA, 2026-07-26). Absent from PULSING for the same reason.
+local KEYBIND_TRIGGER = { color = { 1, 0.82, 0.25 }, opacity = 0.6, layers = "inner", anims = {} }
+
+-- QuickKeybindFrame is load-on-demand in some flows, so this is idempotent and called
+-- from BOTH Init and SetEnabled. Same availability guard Config.lua uses.
+local function hookQuickKeybind()
+  local f = QuickKeybindFrame
+  if not f or f.gbGlowHooked then return end
+  f.gbGlowHooked = true
+  f:HookScript("OnShow", function() Glows:SetKeybindMode(true) end)
+  f:HookScript("OnHide", function() Glows:SetKeybindMode(false) end)
+end
 -- Stage-3 per-bar presets: reads funnel through Skin's PV (ONE ctx, owned by
 -- Skin — see Skin:EnterButtonCtx), so a bar wearing another preset resolves
 -- ITS triggers/shape. Outside any ctx this is exactly the old working-copy read.
@@ -189,6 +212,9 @@ local function enabledTrig(key) local t = trig(key); if t and t.enabled ~= false
 -- skipping disabled triggers. Returns (triggerKey, record) or nil.
 local function winningTrigger(s)
   if not s then return nil end
+  -- Top priority: while Quick Keybind Mode is open you need to see what is BINDABLE,
+  -- not what happens to be proccing behind it.
+  if s.keybind then return "keybind", (enabledTrig("keybind") or KEYBIND_TRIGGER) end
   if s.assist then local t = enabledTrig("assist"); if t then return "assist", t end end
   if s.alert == "assist" then local t = enabledTrig("assist"); if t then return "assist", t end
   elseif s.alert == "gold" then local t = enabledTrig("proc"); if t then return "proc", t end end
@@ -242,6 +268,38 @@ end
 function Glows:SetCast(btn, kind)
   if not (Glows.enabled and isOurs(btn)) then return end   -- our action buttons only (skip Cooldown Viewer)
   SetSource(btn, "cast", kind)
+end
+
+-- ⚠ Blizzard's QuickKeybindHighlightTexture does NOT exist at skin time — it is created
+-- and lit only when the mode opens. An earlier attempt suppressed it inside Skin.lua's
+-- one-time state-art block, where the `if btn.QuickKeybindHighlightTexture` guard was
+-- simply never true: no error, no effect, gold square still there (owner QA,
+-- 2026-07-26). Suppress it HERE, where it is guaranteed to exist.
+local function silenceBlizzKeybindArt()
+  GB:ForEachButton(function(btn)
+    local t = isOurs(btn) and btn.QuickKeybindHighlightTexture
+    if t then t:SetAlpha(0) end
+  end)
+end
+
+-- Quick Keybind Mode on/off. Blizzard lights its own QuickKeybindHighlightTexture on
+-- every bindable button; on the hand shape Skin.lua suppresses that square (it was
+-- never masked or fitted, so it drew proud of the icon) and this carries the state on
+-- the shaped glow instead — the same swap already done for hover / selected / flash.
+function Glows:SetKeybindMode(on)
+  if not Glows.enabled then return end
+  GB:ForEachButton(function(btn)
+    if isOurs(btn) then SetSource(btn, "keybind", on and true or nil) end
+  end)
+  -- Hand shape only — the SDF path keeps Blizzard's art, anchored by Skin.lua.
+  if on and handShapeKey() then
+    -- TWO passes on purpose. QuickKeybindHighlightTexture does not exist yet when the
+    -- skin runs, and is not reliably lit by the time QuickKeybindFrame's OnShow fires,
+    -- so one immediate sweep can land before Blizzard has created it. Next frame
+    -- catches the normal case; the short delay catches a late/staggered light-up.
+    C_Timer.After(0, silenceBlizzKeybindArt)
+    C_Timer.After(0.1, silenceBlizzKeybindArt)
+  end
 end
 
 function Glows:Init()
@@ -309,10 +367,12 @@ function Glows:Init()
       if isOurs(btn) then SetSource(btn, "selected", (btn.GetChecked and btn:GetChecked()) and true or nil) end
     end)
   end)
+  hookQuickKeybind()
 end
 
 function Glows:SetEnabled(on)
   self:Init()
+  hookQuickKeybind()   -- retry: the frame may not have existed at Init time
   self.enabled = on
   ourSet = nil   -- rebuild the action-button set on next use (all buttons exist by now)
   if on then

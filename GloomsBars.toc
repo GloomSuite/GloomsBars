@@ -17,10 +17,13 @@ Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 
 # Load order: Core (namespace + saved vars + /gb router) first, then the skin
-# engine, the shaped proc glows, the per-trigger animation system, the
-# bar-layout engine, then the style-editor Config UI (registers the Bars tab).
+# engine, the per-action icon overrides, the shaped proc glows, the per-trigger
+# animation system, the bar-layout engine, then the style-editor Config UI
+# (registers the Bars tab).
 Core.lua
 Skin.lua
+IconsManifest.lua
+Icons.lua
 Glows.lua
 Anims.lua
 Layout.lua
