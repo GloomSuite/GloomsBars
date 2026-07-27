@@ -16,6 +16,38 @@ Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-
 
 ---
 
+## ★★ PER-BAR PRESET CONTEXT — the rule that has now broken twice
+
+**Any code that loops over buttons and reads a preset value MUST supply the per-button context.**
+Not doing so is silent: everything renders from `GB.db`, the working copy, so *every* bar shows the
+preset currently being edited and nothing errors.
+
+How resolution works: `pv(field)` returns `presetCtx[field]` if set, else `GB.db[field]`. `presetCtx`
+is set from a **button** — `presetFor(btn)` — and returns nil when the bar wears the preset being
+edited (that bar *should* follow the working copy). Two ways to supply it:
+
+- `withPresetCtx(fn)` — the decorator. Works only for helpers whose **first argument is the button**.
+- `Skin:EnterButtonCtx(btn)` / `Skin:LeaveButtonCtx(prevP, prevS)` — for everything else.
+
+⚠ **`applyTexCoord(icon)` takes the ICON, not the button.** It can therefore NEVER be wrapped, and
+depends entirely on its caller's enclosing context. Same trap applies to every other sub-object
+helper — `ExtensionHeight(icon)`, `maskPlan(icon)`, `applySwipe(cd)`, `applyBorderColor(tex)`.
+
+**Fixed 2026-07-26, owner-QA'd** — `SetZoom` and `SetIconFill` now enter the ctx around
+`applyTexCoord`, and `refreshIconGeometry` joined the `withPresetCtx` list (it is reached by
+`RefreshAll` → `SetSizeScale`, which is what a **preset switch** runs — that is why the wrong crop
+survived a `/reload`). Symptom was the Icon Zoom slider moving every bar on screen.
+
+**The audit, worth repeating after any new live setter:** list every `GB:ForEachButton` loop in
+`Skin.lua` and confirm each supplies context. At the time of the fix: ten loops, eight already
+correct (six via `withPresetCtx`, two setting `presetCtx` by hand), two wrong.
+
+★ `Skin.lua:1408`'s comment records the **earlier** round of this same bug, where icon *size* went to
+the working copy for bars on a non-edit preset. Saved data was never involved either time — presets
+kept their own distinct values throughout, which is how you tell resolution from corruption.
+
+---
+
 ## ★ Per-action icon overrides — `GB.Icons` (2026-07-26, owner-QA'd)
 
 Swap icon art on GB's action buttons **only**. A custom pack in `Interface/ICONS` is global — the
@@ -34,6 +66,8 @@ the spellID directly; macros key on the spell the macro currently casts.
 | `tools/build-icon-manifest.sh` | scans `IconsHD/`, rewrites the manifest |
 | `Rebuild Icons.command` | Finder double-click wrapper for the above |
 | `tools/install-icon-watcher.sh` | OPTIONAL LaunchAgent, **not installed** |
+| `tools/find-icon.sh` | spellID → which icon art the game uses |
+| `Find Icon.command` | Finder double-click wrapper for the above |
 | `IconsHD/` | the art — **gitignored, and the only copy in existence** |
 
 Two sources, **explicit `/gb icon` override beats the manifest**, so a quick experiment always wins.
@@ -49,6 +83,21 @@ deliberate, not drift. It is *tracked* so the file always exists — a TOC entry
 file risks the addon being flagged corrupt — but a *populated* manifest names art nobody else has, so
 shipping one would give every other installer **blank icons on those exact spells**. **Never commit a
 populated manifest.** The owner's real one regenerates any time from `Rebuild Icons.command`.
+
+### Finding the ORIGINAL art to edit
+A spellID appears nowhere in an icon's filename — the game maps spellID → fileDataID →
+`interface/icons/<name>.blp`. Fetch: Eagle's icon is `inv_111_hunter_ability_featheredfrenzy`, which
+no amount of searching for "fetch" or "eagle" will surface. `Find Icon.command` resolves it and
+copies the original into `IconsHD/` pre-named for the manifest.
+
+⚠ **It scrapes Wowhead** — fragile by nature. It reports and stops rather than guessing whenever the
+page yields anything other than exactly one icon. **Spells only**: item pages key their icon
+differently and are NOT handled, so an item (e.g. a healthstone) still needs finding by hand.
+
+⚠ **`/gb icon key` cannot do this, and do not re-try it.** `C_Texture.GetFilenameFromFileDataID`
+exists but has **no name for Blizzard's packed assets** — it returns the literal string
+`"FileData ID 538745"`. An earlier attempt printed that as though it were a filename. The command now
+requires a real path and says plainly when the client has no name. **Tested 2026-07-26.**
 
 Applied from three places in `Skin.lua` — once in `ApplyButton`, and re-applied inside the existing
 `Update` and `UpdateButtonArt` hooks, because Blizzard re-sets the icon on every page flip and slot
