@@ -1490,3 +1490,67 @@ describes layout, profiles and geometry throughout.
     specifying offsets means giving an explicit height (losing `:0` auto-line-height — `scaledFontSize`
     has the number), and **shadow COLOUR would stay baked black**, since inline textures take no tint.
   ([[modifier-symbols-outline-deferred]])
+
+---
+
+## Stale HANDOFF sections retired 2026-07-26
+
+Both were dated 2026-07-18 and had gone wrong rather than merely old: the state inventory
+references a SESSION 5 block that was itself archived, and the deferred-feedback list still
+called the colour picker "Blizzard default (NEXT #2)" long after the suite's own picker
+shipped and was fully QA'd. The one item in them that may still be live — flyout buttons
+keeping a square Blizzard background border — was carried forward to "Smaller anytime-items"
+tagged UNVERIFIED rather than dropped.
+
+## CURRENT STATE — what's built and QA'd (base state 2026-07-18; SESSION 5 adds hexagon/border/construction)
+> The bullets below are the session-1→4 skin foundation (all verified in-game). **SESSION 5 (above) adds:
+> Hexagon shape, Border decoration, bidirectional + continuous construction, and REMOVES per-corner mixing.**
+Files: `Core.lua` (namespace, tokens, `GB.SHAPES`, `GB.STYLES`, saved vars, `/gb` router,
+probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
+`Media/masks|art/` (generated), `tools/generate-art.py` (SDF art generator).
+
+- **Skin engine** (`/gb skin`, persisted): all 8 bars (96 buttons) — icon zoom crop
+  (0.08), fresh per-button shape mask, slot art suppressed (`SlotBackground`/`SlotArt`
+  Hide + `NormalTexture`/`PushedTexture` SetAlpha(0) — survives press), re-asserted via
+  per-button `UpdateButtonArt` hook. ✅ QA'd incl. press cycles.
+- **Shape registry** (`GB.SHAPES`: circle, roundrect, square; `/gb shape`, /reload to
+  apply): every shape = mask/swipe/ring/glow PNGs from `tools/generate-art.py` (adding a
+  shape = one signed-distance function). ✅ QA'd on all three shapes.
+- **Cooldown sweeps**: circular 0.8-alpha swipe texture on `cooldown` + LoC widgets
+  (charge cooldown untouched — edge-only), edge/bling off, re-anchored to the icon with
+  overshoot (default 0.75px, `/gb sweep <px>`, persisted). ✅ QA'd.
+- **State art**: hover/checked/flash replaced with `<shape>-ring` art (gold/blue/red
+  tints). ✅ Hover QA'd. 📌 the owner: dimmer than default — styling controls required (backlog).
+- **Proc glows — THE DIFFERENTIATOR, PROVEN**: `Glows.lua` hooks
+  `ActionButtonSpellAlertManager:ShowAlert/HideAlert` + `AssistedCombatManager:
+  SetAssistedHighlightFrameShown`; silences Blizzard frames via durable alpha-0; one
+  shaped additive pulsing halo per button (gold procs / blue assist). ✅ QA'd: real
+  in-combat proc traced the shape on round AND square. Assist-highlight replacement also
+  observed working (LOW PRIORITY per the owner — do not iterate on it). ✅ "Hard to see" RESOLVED
+  session 6: color/Brightness/Size/Pulse controls + a wide soft bloom (see SESSION 6).
+- **Cast/channel overlay**: drain (`CastFill` mask swap), inner glow (art replacement via
+  `PlaySpellCastAnim` hook, lime/gold, RING_FIT sizing), `EndBurst` end flash (mask
+  swap). ✅ FULLY QA'd on round and square.
+- **Decoration engine + construction zones** (`/gb style`, live, persisted): styles as
+  data — extension zone below the icon, pooled WHITE8X8 gradient plates (solid+fade
+  primitives), keybind override (position/font/size/color, re-asserted via `UpdateHotkeys`
+  hook, text container raised). ✅ QA'd against the owner's Figma mock.
+- **Text**: Count/Name/HotKey on bundled GeneralSans (sizes/flags/range-coloring kept).
+  ✅ Verified via `/gb fontinfo`. ✅ Font picker DONE session 6 (LibSharedMedia dropdown); Count/Name
+  per-style overrides still backlog.
+
+**Dev slash commands** (scaffolding, not product): `/gb skin`, `/gb shape <name>`,
+`/gb style <name>`, `/gb sweep <px>`, `/gb debug`, `/gb glowinfo`, `/gb fontinfo`,
+`/gb mask`, `/gb maskinfo`, `/gb round`.
+
+## Config UI — deferred feedback (the owner, 2026-07-18, in-game QA of the editor)
+The owner chose to defer these to keep wiring the sub-panels; revisit after breadth:
+- ✅ **DONE (session 4): overlays now match the pill SHAPE + span the construction** (hover/checked/flash
+  ring, cooldown sweep, cast fill/ring/interrupt).
+- ✅ **DONE (session 7): the "size/width slider" + "state highlights too subtle"** — State Highlights got a
+  **Glow width** slider AND the ring art was made bolder (full-alpha ADD rim). Both resolved.
+- **Flyout buttons (pet/stance/etc.) keep a square Blizzard background border** at the
+  default size — `Suppress()` misses the flyout background art. Identify + suppress it.
+- **Color picker is the Blizzard default ColorPickerFrame** — clashes with the family
+  look. Build a custom family-styled picker (swatch grid + sliders/wheel). **(NEXT #2.)**
+

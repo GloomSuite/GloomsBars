@@ -11,7 +11,9 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
-**Last updated:** 2026-07-26 (late) · **Shipped: `v1.2.0`** · **No open bugs.**
+**Last updated:** 2026-07-26 (session end) · **Shipped: `v1.2.0`** · **No open bugs.**
+Landed this session: per-bar preset context fix, `GB.Icons` per-action icon overrides, and the
+Quick Keybind gold square. Stale 2026-07-18 sections retired to the archive.
 Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
 
 ---
@@ -126,13 +128,13 @@ carries the state; **SDF fallback keeps Blizzard's art** but anchors it to the i
 
 ---
 
-## ✅ CLOSED, NOT A GB BUG — the frame-level stack does NOT block Quick Keybind Mode (2026-07-26)
+## ✅ CLOSED, NOT A GB BUG — the frame-level stack does NOT block Quick Keybind Mode
 
-**Full record and evidence: `~/GloomsHub/docs/FINDINGS.md` §8. Don't restate it here.** What belongs
-in this file is the GB-side reasoning. **No code change was made, and none is needed.**
+**Full record, evidence and `KILLED` list: `~/GloomsHub/docs/FINDINGS.md` §8.** Not restated here.
+Closed 2026-07-26: non-reproducible on both clients, and the `/fstack` reading that named GB was a
+misreading of what its arrow means. No code changed on account of it.
 
-`Skin.lua:1378` raises `TextOverlayContainer` to `btn:GetFrameLevel() + 4`. That is **deliberate,
-correct, and now proven harmless** — it is the top of a stack the skin depends on:
+What belongs in THIS file is the stack it wrongly accused, which is deliberate and correct:
 
 | Layer | Level | Set at |
 |---|---|---|
@@ -142,34 +144,10 @@ correct, and now proven harmless** — it is the top of a stack the skin depends
 | **`TextOverlayContainer`** | **`+4`** | **`Skin.lua:1378`** |
 | cooldown-and-above | `+5` | `Skin.lua:1753` |
 
-The comment at `Skin.lua:790` records the intent — *"above icon, below text (TextOverlayContainer =
-+4)"*. **Do not "fix" this by lowering the container**; hotkey and count text would fall behind the
-skin, which is the problem this stack exists to prevent.
-
-### What was claimed, and why it was wrong
-An earlier session claimed the container is **mouse-enabled** and outranks the button for mouse
-focus, so Quick Keybind Mode never receives the hover — "proven with `/fstack`". **Both halves are
-dead** (owner-tested on live, 2026-07-26):
-
-- **The stack is present on LIVE and binding works fine.** Same container at 56 over the same button
-  at 52, gold highlight showing, bind assigns normally. So the raise cannot be what blocks it.
-- **`/fstack`'s `-->` arrow is not mouse focus** — it is the topmost frame under the cursor,
-  mouse-enabled or not. On a button's edge it marks GB's own decor frame (`Skin.lua:1290`), and
-  **`Skin.lua` contains no `EnableMouse` call at all** — that frame cannot hold focus. We therefore
-  have no evidence `TextOverlayContainer` is even mouse-enabled.
-
-**Do not write `EnableMouse(false)` on the container.** It was only ever a guess resting on the
-reading above, and the symptom it targeted is gone from both clients.
-
-**Do not "fix" the stack by lowering the container** either — that part of the old note still
-stands, and for the original reason: hotkey and count text would fall behind the skin.
-
-The symptom itself was real on the PTR and is now **non-reproducible there too**. Prime suspect is
-the competing UI suite on that client (FINDINGS §4), which has already manufactured one convincing
-false 12.1 bug — though its action-bars module was already disabled at the time, so the cause is
-genuinely unknown. **Nothing to do in this repo unless it comes back with new evidence.**
-
----
+- ⚠ **Do NOT lower `TextOverlayContainer`** — hotkey and count text would fall behind the skin, which
+  is the problem this stack exists to prevent (`Skin.lua:790` records the intent).
+- ⚠ **Do NOT write `EnableMouse(false)` on it** — that was a guess built on the dead reading, and
+  `Skin.lua` contains no `EnableMouse` call anywhere by design.
 
 ## Colour swatches carry a LABEL (2026-07-26)
 
@@ -384,48 +362,6 @@ flexibility — it's the entire point."
   spec's §B out-of-combat geometry fork is taken later. The UI must communicate this.
 
 
-## CURRENT STATE — what's built and QA'd (base state 2026-07-18; SESSION 5 adds hexagon/border/construction)
-> The bullets below are the session-1→4 skin foundation (all verified in-game). **SESSION 5 (above) adds:
-> Hexagon shape, Border decoration, bidirectional + continuous construction, and REMOVES per-corner mixing.**
-Files: `Core.lua` (namespace, tokens, `GB.SHAPES`, `GB.STYLES`, saved vars, `/gb` router,
-probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
-`Media/masks|art/` (generated), `tools/generate-art.py` (SDF art generator).
-
-- **Skin engine** (`/gb skin`, persisted): all 8 bars (96 buttons) — icon zoom crop
-  (0.08), fresh per-button shape mask, slot art suppressed (`SlotBackground`/`SlotArt`
-  Hide + `NormalTexture`/`PushedTexture` SetAlpha(0) — survives press), re-asserted via
-  per-button `UpdateButtonArt` hook. ✅ QA'd incl. press cycles.
-- **Shape registry** (`GB.SHAPES`: circle, roundrect, square; `/gb shape`, /reload to
-  apply): every shape = mask/swipe/ring/glow PNGs from `tools/generate-art.py` (adding a
-  shape = one signed-distance function). ✅ QA'd on all three shapes.
-- **Cooldown sweeps**: circular 0.8-alpha swipe texture on `cooldown` + LoC widgets
-  (charge cooldown untouched — edge-only), edge/bling off, re-anchored to the icon with
-  overshoot (default 0.75px, `/gb sweep <px>`, persisted). ✅ QA'd.
-- **State art**: hover/checked/flash replaced with `<shape>-ring` art (gold/blue/red
-  tints). ✅ Hover QA'd. 📌 the owner: dimmer than default — styling controls required (backlog).
-- **Proc glows — THE DIFFERENTIATOR, PROVEN**: `Glows.lua` hooks
-  `ActionButtonSpellAlertManager:ShowAlert/HideAlert` + `AssistedCombatManager:
-  SetAssistedHighlightFrameShown`; silences Blizzard frames via durable alpha-0; one
-  shaped additive pulsing halo per button (gold procs / blue assist). ✅ QA'd: real
-  in-combat proc traced the shape on round AND square. Assist-highlight replacement also
-  observed working (LOW PRIORITY per the owner — do not iterate on it). ✅ "Hard to see" RESOLVED
-  session 6: color/Brightness/Size/Pulse controls + a wide soft bloom (see SESSION 6).
-- **Cast/channel overlay**: drain (`CastFill` mask swap), inner glow (art replacement via
-  `PlaySpellCastAnim` hook, lime/gold, RING_FIT sizing), `EndBurst` end flash (mask
-  swap). ✅ FULLY QA'd on round and square.
-- **Decoration engine + construction zones** (`/gb style`, live, persisted): styles as
-  data — extension zone below the icon, pooled WHITE8X8 gradient plates (solid+fade
-  primitives), keybind override (position/font/size/color, re-asserted via `UpdateHotkeys`
-  hook, text container raised). ✅ QA'd against the owner's Figma mock.
-- **Text**: Count/Name/HotKey on bundled GeneralSans (sizes/flags/range-coloring kept).
-  ✅ Verified via `/gb fontinfo`. ✅ Font picker DONE session 6 (LibSharedMedia dropdown); Count/Name
-  per-style overrides still backlog.
-
-**Dev slash commands** (scaffolding, not product): `/gb skin`, `/gb shape <name>`,
-`/gb style <name>`, `/gb sweep <px>`, `/gb debug`, `/gb glowinfo`, `/gb fontinfo`,
-`/gb mask`, `/gb maskinfo`, `/gb round`.
-
-
 ## Verification gates
 | # | Claim | Status |
 |---|-------|--------|
@@ -461,19 +397,11 @@ probes), `Skin.lua` (skin + decoration engine), `Glows.lua` (proc glow engine),
   Barn), bundled-font pre-warm (GloomsAuras Core.lua).
 
 
-## Config UI — deferred feedback (the owner, 2026-07-18, in-game QA of the editor)
-The owner chose to defer these to keep wiring the sub-panels; revisit after breadth:
-- ✅ **DONE (session 4): overlays now match the pill SHAPE + span the construction** (hover/checked/flash
-  ring, cooldown sweep, cast fill/ring/interrupt).
-- ✅ **DONE (session 7): the "size/width slider" + "state highlights too subtle"** — State Highlights got a
-  **Glow width** slider AND the ring art was made bolder (full-alpha ADD rim). Both resolved.
-- **Flyout buttons (pet/stance/etc.) keep a square Blizzard background border** at the
-  default size — `Suppress()` misses the flyout background art. Identify + suppress it.
-- **Color picker is the Blizzard default ColorPickerFrame** — clashes with the family
-  look. Build a custom family-styled picker (swatch grid + sliders/wheel). **(NEXT #2.)**
-
-
 ## Smaller anytime-items
+- **`UNVERIFIED` (claim dated 2026-07-18, never re-checked):** flyout buttons (pet/stance/etc.) keep a
+  square Blizzard background border at the default size — `Suppress()` was said to miss the flyout
+  background art. Carried forward from a retired section rather than dropped. **Confirm it still
+  happens before spending anything on it.**
 - Aspect-correct mask art for stretched constructions (corner distortion on tall shapes).
 - Count/Name per-style overrides; more layer kinds (border, badge, top plate).
 - Pet/stance/extra-action/vehicle bars; minimap button + icon art (`## IconTexture`).
