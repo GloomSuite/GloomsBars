@@ -2008,7 +2008,12 @@ function Skin:SetZoom(v)
     GB:ForEachButton(function(btn)
       local rec = records[btn]
       local icon = btn.icon or btn.Icon
-      if rec and rec.active and icon then applyTexCoord(icon) end
+      if not (rec and rec.active and icon) then return end
+      -- Per-bar preset ctx: without it every bar re-crops at the WORKING COPY's
+      -- zoom, so dragging this slider moved bars wearing OTHER presets too.
+      local prevP, prevS = self:EnterButtonCtx(btn)
+      applyTexCoord(icon)
+      self:LeaveButtonCtx(prevP, prevS)
     end)
   end
 end
@@ -2021,7 +2026,10 @@ function Skin:SetIconFill(mode)
   GB:ForEachButton(function(btn)
     local rec = records[btn]
     local icon = btn.icon or btn.Icon
-    if rec and rec.active and icon then applyTexCoord(icon) end
+    if not (rec and rec.active and icon) then return end
+    local prevP, prevS = self:EnterButtonCtx(btn)   -- same per-bar ctx as SetZoom
+    applyTexCoord(icon)
+    self:LeaveButtonCtx(prevP, prevS)
   end)
 end
 
@@ -2489,6 +2497,11 @@ styleCast         = withPresetCtx(styleCast)
 refreshDimProxy   = withPresetCtx(refreshDimProxy)
 ApplyDecor        = withPresetCtx(ApplyDecor)
 ApplyButton       = withPresetCtx(ApplyButton)
+-- ★ It calls applyTexCoord directly, and applyTexCoord takes only the ICON — so it
+-- can never be wrapped itself and depends entirely on an enclosing ctx. Without
+-- this, a size change re-cropped every bar at the WORKING COPY's zoom instead of
+-- its own preset's (owner-reported 2026-07-26, via the zoom slider).
+refreshIconGeometry = withPresetCtx(refreshIconGeometry)
 
 -- ---------------------------------------------------------------------------
 -- Flyout member skinning (session 13): SpellFlyoutPopupButton1..N — the popup
