@@ -191,6 +191,34 @@ function Icons:Command(rest)
     GB.msg(("key = %s  (%s)"):format(key, describe(key)))
     if file then print("  file: " .. ICON_DIR .. file)
     else print("  |cffff6666no override and no manifest entry for this key|r") end
+
+    -- ★ Which BLIZZARD art file is this? A spellID appears nowhere in an icon's
+    -- filename, so without this you cannot find the original to edit — Fetch:
+    -- Eagle's icon is "inv_111_hunter_ability_featheredfrenzy". Use
+    -- GetActionTexture, NOT icon:GetTexture(), because an override may already
+    -- have replaced what the texture is showing.
+    local okT, fileID = pcall(GetActionTexture, b.action)
+    if okT and fileID then
+      -- ⚠ GetFilenameFromFileDataID EXISTS but has no name for Blizzard's CASC
+      -- assets — it returns the placeholder "FileData ID <n>" (owner QA,
+      -- 2026-07-26: iconID 538745 came back exactly like that). A real answer is
+      -- a path, so require a slash and reject the placeholder. Presenting that
+      -- string as a filename sends you hunting for a file that cannot exist.
+      local stem
+      if C_Texture and C_Texture.GetFilenameFromFileDataID then
+        local okN, path = pcall(C_Texture.GetFilenameFromFileDataID, fileID)
+        if okN and type(path) == "string" and path:find("[/\\]") and not path:match("^FileData ID") then
+          stem = path:match("([^/\\]+)$")
+          if stem then stem = stem:gsub("%.%w+$", "") end   -- .blp in game, .tga in your pack
+        end
+      end
+      if stem then
+        print(("  blizzard art: |cff936bff%s|r  (iconID %s)"):format(stem, tostring(fileID)))
+      else
+        print(("  blizzard art: iconID %s |cff808080— this client has no NAME for it.|r"):format(tostring(fileID)))
+        print("  |cff808080find the original with \"Find Icon.command\" instead.|r")
+      end
+    end
     return
   end
 
