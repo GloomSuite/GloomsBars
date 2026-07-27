@@ -46,14 +46,36 @@ end
 -- that throws. 12.1 taught us what a silent read failure costs.
 local function keyForSlot(slot)
   if not slot then return nil end
-  local ok, kind, id = pcall(GetActionInfo, slot)
+  -- ★ THE THIRD RETURN MATTERS. GetActionInfo gives (actionType, id, subType), and
+  -- for macros the subType is the only thing that tells the two shapes apart.
+  local ok, kind, id, sub = pcall(GetActionInfo, slot)
   if not (ok and kind and id) then return nil end
   if kind == "spell" then return "spell:" .. id end
   if kind == "item" then return "item:" .. id end
+
   if kind == "macro" then
-    -- A macro's icon follows whatever spell it currently casts, so key on that.
-    local ok2, sid = pcall(GetMacroSpell, id)
-    if ok2 and sid then return "spell:" .. sid end
+    -- ⚠ `id` for a macro is NOT simply a macro index, and reading it as one is
+    -- exactly what broke this first time round (owner QA, 2026-07-26: a
+    -- "Volley Cursor" macro silently took no override). Pattern below follows
+    -- EllesmereUICooldownManager, an installed addon whose comment records both
+    -- traps — a live reference beats memory for current API shapes.
+    if sub == "spell" then
+      -- "Smart" single-spell macro: Blizzard ALREADY resolved it and `id` IS the
+      -- spellID. Passing it to GetMacroSpell looks up a macro index that is not
+      -- one, gets nil, and the override vanishes with no error.
+      return "spell:" .. id
+    end
+    -- Conditional / multi-line / item macros: `id` is not a reliable identifier
+    -- at all. Resolve the real macro index by NAME instead.
+    local ok2, name = pcall(GetActionText, slot)
+    local idx = (ok2 and name) and GetMacroIndexByName(name) or nil
+    if idx and idx > 0 then
+      local ok3, sid = pcall(GetMacroSpell, idx)
+      if ok3 and type(sid) == "number" then return "spell:" .. sid end
+      -- Macro uses /use rather than /cast — resolve it as an item.
+      local ok4, _, _, itemID = pcall(GetMacroItem, idx)
+      if ok4 and type(itemID) == "number" then return "item:" .. itemID end
+    end
   end
   return nil
 end
@@ -123,6 +145,7 @@ local function usage()
   print("  |cff936bff/gb icon clear|r               clear the last hovered button")
   print("  |cff936bff/gb icon clear <spellID>|r     clear that spell")
   print("  |cff936bff/gb icon list|r                list every override")
+  print("  |cff936bff/gb icon key|r                 WHY didn't it change? diagnose the last hovered")
   print("  files live in |cff936bffIconsHD\\|r inside the GloomsBars folder.")
   print("  |cff808080for MANY icons: name them class_spec_name_<spellID>.tga (the ID is|r")
   print("  |cff808080the LAST segment), drop them in IconsHD\\, double-click|r")
@@ -149,6 +172,27 @@ function Icons:Command(rest)
   local head = (rest:match("^(%S+)") or ""):lower()
 
   if rest == "" or head == "help" then usage(); return end
+
+  -- Why did my icon not change? This answers it in one line instead of a guess.
+  -- The macro bug (2026-07-26) was invisible precisely because a failed key
+  -- resolution looks identical to "no override set": nothing happens, no error.
+  if head == "key" then
+    local b = self.lastHovered
+    if not b then GB.msg("hover an action button first, then run this again."); return end
+    local _, kind, id, sub = pcall(GetActionInfo, b.action)
+    print(("  slot=%s  GetActionInfo -> type=%s  id=%s  subType=%s"):format(
+      tostring(b.action), tostring(kind), tostring(id), tostring(sub)))
+    local key = self:KeyFor(b)
+    if not key then
+      GB.msg("|cffff6666no key resolved|r — nothing can override that button.")
+      return
+    end
+    local file = t[key] or (GB.ICON_MANIFEST and GB.ICON_MANIFEST[key])
+    GB.msg(("key = %s  (%s)"):format(key, describe(key)))
+    if file then print("  file: " .. ICON_DIR .. file)
+    else print("  |cffff6666no override and no manifest entry for this key|r") end
+    return
+  end
 
   if head == "list" then
     local n, m = 0, 0
