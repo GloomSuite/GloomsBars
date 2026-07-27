@@ -216,7 +216,7 @@ function Icons:Command(rest)
         print(("  blizzard art: |cff936bff%s|r  (iconID %s)"):format(stem, tostring(fileID)))
       else
         print(("  blizzard art: iconID %s |cff808080— this client has no NAME for it.|r"):format(tostring(fileID)))
-        print("  |cff808080find the original with \"Find Icon.command\" instead.|r")
+        print("  |cff808080look the spell up on Wowhead; its results list the icon name.|r")
       end
     end
     return

@@ -66,8 +66,6 @@ the spellID directly; macros key on the spell the macro currently casts.
 | `tools/build-icon-manifest.sh` | scans `IconsHD/`, rewrites the manifest |
 | `Rebuild Icons.command` | Finder double-click wrapper for the above |
 | `tools/install-icon-watcher.sh` | OPTIONAL LaunchAgent, **not installed** |
-| `tools/find-icon.sh` | spellID → which icon art the game uses |
-| `Find Icon.command` | Finder double-click wrapper for the above |
 | `IconsHD/` | the art — **gitignored, and the only copy in existence** |
 
 Two sources, **explicit `/gb icon` override beats the manifest**, so a quick experiment always wins.
@@ -84,20 +82,21 @@ file risks the addon being flagged corrupt — but a *populated* manifest names 
 shipping one would give every other installer **blank icons on those exact spells**. **Never commit a
 populated manifest.** The owner's real one regenerates any time from `Rebuild Icons.command`.
 
-### Finding the ORIGINAL art to edit
+### Finding the ORIGINAL art to edit — the owner looks it up on Wowhead
 A spellID appears nowhere in an icon's filename — the game maps spellID → fileDataID →
 `interface/icons/<name>.blp`. Fetch: Eagle's icon is `inv_111_hunter_ability_featheredfrenzy`, which
-no amount of searching for "fetch" or "eagle" will surface. `Find Icon.command` resolves it and
-copies the original into `IconsHD/` pre-named for the manifest.
+no amount of searching for "fetch" or "eagle" will surface.
 
-⚠ **It scrapes Wowhead** — fragile by nature. It reports and stops rather than guessing whenever the
-page yields anything other than exactly one icon. **Spells only**: item pages key their icon
-differently and are NOT handled, so an item (e.g. a healthstone) still needs finding by hand.
+**His method: search the spell on Wowhead — the results list the icon name** — then take that
+`<name>.tga` from his icon pack. **Do not build tooling for this.** A script that resolved a spellID
+and copied the file in was written and then DELETED on 2026-07-26: *"I'm barely using it — it's
+faster to just look up the spell on wowhead."* It was also fragile (page scraping) and handled
+spells but not items. **A tool that is both unused and fragile is worse than no tool.**
 
 ⚠ **`/gb icon key` cannot do this, and do not re-try it.** `C_Texture.GetFilenameFromFileDataID`
 exists but has **no name for Blizzard's packed assets** — it returns the literal string
 `"FileData ID 538745"`. An earlier attempt printed that as though it were a filename. The command now
-requires a real path and says plainly when the client has no name. **Tested 2026-07-26.**
+requires a real path and points at Wowhead instead. **Tested 2026-07-26.**
 
 Applied from three places in `Skin.lua` — once in `ApplyButton`, and re-applied inside the existing
 `Update` and `UpdateButtonArt` hooks, because Blizzard re-sets the icon on every page flip and slot
