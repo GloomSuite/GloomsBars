@@ -233,6 +233,12 @@ Resolved 2026-07-24/25, archived 2026-07-26. Full text in [ARCHIVE.md](ARCHIVE.m
 the modifier-symbol outline was DROPPED, which is the one a session might re-propose.
 
 ## ✔ SETTLED (session 7): Blizzard's cooldown EDGE + finish BLING can't be shaped — don't re-attempt.
+> ⚠ **2026-07-30: the PREMISE may have changed, `UNTESTED`.** 12.1 adds radial masking to textures
+> and status bars — `SetRadialProgressBarPercent`, `SetRadialProgressBarStartOffset` / `EndOffset` /
+> `Reverse` / `Feather`. This decision was made against the old API and was correct then. **Not
+> reopened, and not a task** — recorded only so nobody re-derives the limitation from scratch, or
+> assumes it still holds without checking. Owner's call whether it is ever worth revisiting.
+> Source: <https://warcraft.wiki.gg/wiki/Patch_12.1.0/API_changes>
 The cooldown SWEEP follows the shape via its swipe-texture alpha (works). But the rotating EDGE line and the
 finish BLING (star) are drawn INTERNALLY by Blizzard's Cooldown widget to the SQUARE frame bounds — no
 maskable handle, and `SetEdgeTexture`/`SetBlingTexture` colour args only MULTIPLY their baked gold/blue
