@@ -49,8 +49,7 @@
 Bespoke WoW addon: an **appearance + geometry layer** for Blizzard's built-in action bars —
 rounded / non-square icons, restyled text, **shape-matched proc glows + cooldown sweeps**
 (the differentiator), a per-trigger animation system, and **opt-in per-bar layout** (size,
-gaps, rows, orientation, count, visibility, position). Target: **Midnight 12.0.7**
-(Interface `120007`), retail only. Third sibling to GloomsAuras + GloomsBuildBarn
+gaps, rows, orientation, count, visibility, position). Target: **Midnight 12.1** (Interface `120100`), retail only. Third sibling to GloomsAuras + GloomsBuildBarn
 (author "Gloom", guild Hand of Devastation).
 
 ## The one principle that matters
@@ -147,7 +146,7 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
   "ctx," "reconcile" mean nothing to him; name controls by their visible effect.
 
 ## Files
-- `GloomsBars.toc` — manifest (Interface 120007, `## IconTexture` → minimap art). Declares
+- `GloomsBars.toc` — manifest (Interface 120100, `## IconTexture` → minimap art). Declares
   load order: `Libs/*` first, then `Core → Skin → Glows → Anims → Layout → Config →
   MinimapButton`.
 - `Core.lua` — namespace, design tokens (`GB.COLOR`/`GB.FONT`), `GB.SHAPES` (shape registry)
