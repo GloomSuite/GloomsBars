@@ -247,6 +247,28 @@ function GB:SnapshotPreset()
   return snap
 end
 
+-- The FACTORY look as a preset. Same shape as SnapshotPreset, but read from
+-- DB_DEFAULTS instead of the live working copy — so "New profile" means a genuine
+-- fresh start, not a copy of whatever happened to be on screen. (Copy is the
+-- button for "start from this look"; GA and Overlays already split New/Copy this
+-- way, and GB was the odd one out.)
+--
+-- Three PRESET_FIELDS are deliberately NOT in DB_DEFAULTS — the load path derives
+-- them (styleData from the chosen style template, handShape from the legacy shape,
+-- triggers from the glow/state fields), and adding them to DB_DEFAULTS would
+-- pre-empt that derivation and break upgrades. They are supplied explicitly here.
+-- ⚠ Every field must be non-nil: LoadPreset SKIPS nil fields, so a gap here would
+-- silently leave the NEW profile wearing the OLD profile's value for it.
+function GB:DefaultPreset()
+  local D = GB.DB_DEFAULTS
+  local snap = {}
+  for _, k in ipairs(GB.PRESET_FIELDS) do snap[k] = deepcopy(D[k]) end
+  snap.handShape = "circle"   -- what the load path derives from the default shape ("circle")
+  snap.styleData = deepcopy(GB.STYLES[D.style] or GB.STYLES.none)
+  snap.triggers  = GB.BuildTriggerDefaults(D)
+  return snap
+end
+
 -- Save the working copy into the active profile under `pname` (defaults to the
 -- profile's edit target).
 function GB:SavePreset(pname)
@@ -278,7 +300,7 @@ function GB:CreateProfile(name)
   local db = GB.db
   if not db or db.profiles[name] then return false end
   db.profiles[name] = {
-    presets = { Default = GB:SnapshotPreset() },
+    presets = { Default = GB:DefaultPreset() },
     bars = {}, edit = "Default",
   }
   for _, bar in ipairs(GB.BARS) do db.profiles[name].bars[bar.buttonPrefix] = "Default" end
@@ -294,7 +316,12 @@ end
 
 function GB:RenameProfile(old, new)
   local db = GB.db
-  if not (db and db.profiles[old]) or db.profiles[new] or old == new then return false end
+  if not (db and db.profiles[old]) then return false end
+  -- Renaming to the name it already has is a no-op, NOT a collision. The dialog
+  -- prefills the current name, so OK-without-typing used to report "a profile
+  -- with that name already exists" — technically true, useless to read.
+  if old == new then return true end
+  if db.profiles[new] then return false end
   db.profiles[new] = db.profiles[old]
   db.profiles[old] = nil
   for char, p in pairs(db.charProfiles or {}) do
@@ -319,7 +346,10 @@ function GB:DeleteProfile(name)
     local prof = db.profiles[fallback]
     GB:LoadPreset(prof.edit or next(prof.presets))
   end
-  return true
+  -- The fallback is whatever `next` hands back — arbitrary table order, not the
+  -- oldest or the first alphabetically. Returned so the caller can SAY which
+  -- profile this character just landed on instead of silently moving it.
+  return true, fallback
 end
 
 function GB:SetActiveProfile(name)
@@ -348,7 +378,9 @@ end
 
 function GB:RenamePreset(old, new)
   local prof = GB:ActiveProfile()
-  if not (prof and prof.presets[old]) or not new or new == "" or prof.presets[new] or old == new then return false end
+  if not (prof and prof.presets[old]) or not new or new == "" then return false end
+  if old == new then return true end            -- no-op, not a collision (see RenameProfile)
+  if prof.presets[new] then return false end
   prof.presets[new] = prof.presets[old]
   prof.presets[old] = nil
   if prof.edit == old then prof.edit = new end
@@ -642,6 +674,32 @@ local DB_DEFAULTS = {
   glowScale = 128 / 80,               -- halo size × icon (matches Glows.GLOW_SCALE; wide bloom past the rim)
   glowPulseSpeed = 1,                 -- pulse speed multiplier (higher = faster)
 }
+-- Exposed because GB:DefaultPreset (defined far above, near SnapshotPreset) reads
+-- it; a function body resolves GB.DB_DEFAULTS at CALL time, long after load, so
+-- the declaration order does not matter.
+GB.DB_DEFAULTS = DB_DEFAULTS
+
+-- The per-trigger glow records, derived from a source table's glow/state fields.
+-- ONE definition, used twice: the session-10 migration below seeds from the LIVE
+-- db so an existing look carries over exactly, and GB:DefaultPreset seeds from
+-- DB_DEFAULTS so a brand-new profile gets the factory glows. Keeping it in one
+-- place is what stops those two drifting apart.
+local function buildTriggerDefaults(src)
+  local sc = src.stateColors or {}
+  local gi = src.glowIntensity or 0.9   -- proc/assist/cast/channel peak
+  local si = src.stateIntensity or 1    -- hover/selected/flash peak
+  return {
+    proc      = { enabled = true, color = src.glowColor or { 1, 0.85, 0.35 },      opacity = gi, layers = "both" },
+    highlight = { enabled = true, color = { 1, 0.93, 0.55 },                       opacity = gi, layers = "both" },   -- Blizzard's "press this" pulse (session 12)
+    assist    = { enabled = true, color = src.glowAssistColor or { 0.4, 0.75, 1 }, opacity = gi, layers = "both" },
+    cast      = { enabled = true, color = { 1, 0.85, 0.4 },                        opacity = gi, layers = "both" },
+    channel   = { enabled = true, color = { 0.6, 1, 0.4 },                         opacity = gi, layers = "both" },
+    hover     = { enabled = true, color = sc.hover or { 1, 0.82, 0.35 },           opacity = si, layers = "both" },
+    selected  = { enabled = true, color = sc.selected or { 0.45, 0.75, 1 },        opacity = si, layers = "inner" },   -- soft blue INNER-ONLY: our restyle of Blizzard's subtle yellow interior stance glow (the owner)
+    flash     = { enabled = true, color = sc.flash or { 1, 0.25, 0.25 },           opacity = si, layers = "both" },
+  }
+end
+GB.BuildTriggerDefaults = buildTriggerDefaults
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
@@ -697,19 +755,7 @@ loader:SetScript("OnEvent", function(_, event, arg1)
     -- stateColors/stateIntensity) so the current look carries over exactly. The old
     -- fields are kept (dormant SDF fallback + preview) but no longer the source.
     do
-      local sc = GB.db.stateColors or {}
-      local gi = GB.db.glowIntensity or 0.9   -- proc/assist/cast/channel peak
-      local si = GB.db.stateIntensity or 1    -- hover/selected/flash peak
-      local seedT = {
-        proc     = { enabled = true, color = GB.db.glowColor or { 1, 0.85, 0.35 },      opacity = gi, layers = "both" },
-        highlight = { enabled = true, color = { 1, 0.93, 0.55 },                        opacity = gi, layers = "both" },   -- Blizzard's "press this" pulse (session 12)
-        assist   = { enabled = true, color = GB.db.glowAssistColor or { 0.4, 0.75, 1 }, opacity = gi, layers = "both" },
-        cast     = { enabled = true, color = { 1, 0.85, 0.4 },                          opacity = gi, layers = "both" },
-        channel  = { enabled = true, color = { 0.6, 1, 0.4 },                           opacity = gi, layers = "both" },
-        hover    = { enabled = true, color = sc.hover or { 1, 0.82, 0.35 },             opacity = si, layers = "both" },
-        selected = { enabled = true, color = sc.selected or { 0.45, 0.75, 1 },          opacity = si, layers = "inner" },   -- soft blue INNER-ONLY: our restyle of Blizzard's subtle yellow interior stance glow (the owner)
-        flash    = { enabled = true, color = sc.flash or { 1, 0.25, 0.25 },             opacity = si, layers = "both" },
-      }
+      local seedT = buildTriggerDefaults(GB.db)
       GB.db.triggers = GB.db.triggers or {}
       for key, def in pairs(seedT) do
         local t = GB.db.triggers[key]
@@ -756,9 +802,9 @@ loader:SetScript("OnEvent", function(_, event, arg1)
   elseif event == "PLAYER_LOGIN" then
     -- Bind this character to its profile. A character's FIRST login creates
     -- its OWN profile — "Name - Realm", the GloomsAuras convention (the owner,
-    -- session 13: characters must not share a profile by default) — seeded
-    -- from the current look. Existing bindings are honored (switching stays
-    -- manual). Runs at LOGIN because CharKey needs the realm.
+    -- session 13: characters must not share a profile by default). Existing
+    -- bindings are honored (switching stays manual). Runs at LOGIN because
+    -- CharKey needs the realm.
     if GB.db and GB.db.profiles then
       GB.db.charProfiles = GB.db.charProfiles or {}
       local key = GB:CharKey()
@@ -766,12 +812,32 @@ loader:SetScript("OnEvent", function(_, event, arg1)
         local cname, realm = UnitName("player"), GetRealmName()
         local pname = (cname or "?") .. " - " .. (realm or "?")
         if not GB.db.profiles[pname] then
-          local prof = { presets = { Default = GB:SnapshotPreset() }, bars = {}, edit = "Default" }
+          -- The look a brand-new character starts with. The VERY FIRST profile
+          -- ever created keeps the working copy, because on an upgrade from a
+          -- pre-profiles GB that working copy IS the user's existing look and
+          -- discarding it would wipe their setup. Every character after that
+          -- starts at the FACTORY look (the owner, 2026-08-15: an alt quietly
+          -- inheriting whoever you played last is surprising — its bars and its
+          -- layout are different anyway). On a fresh install the two are the
+          -- same thing, so this only ever protects the upgrade path.
+          local firstEver = (next(GB.db.profiles) == nil)
+          local prof = {
+            presets = { Default = firstEver and GB:SnapshotPreset() or GB:DefaultPreset() },
+            bars = {}, edit = "Default",
+          }
           for _, bar in ipairs(GB.BARS) do prof.bars[bar.buttonPrefix] = "Default" end
           GB.db.profiles[pname] = prof
         end
         GB.db.charProfiles[key] = pname
       end
+      -- ★ LOAD the bound profile's look over the working copy. Without this the
+      -- per-character profile is bookkeeping only: GloomsBarsDB is ACCOUNT-wide,
+      -- so GB.db's visual fields still hold whatever the LAST character played
+      -- left behind, and that is what renders. Worse, PLAYER_LOGOUT snapshots the
+      -- working copy into THIS character's edit preset — so the stale look was
+      -- being written over this character's saved one every logout.
+      local bound = GB:ActiveProfile()
+      if bound then GB:LoadPreset(bound.edit or next(bound.presets)) end
     end
     PreloadFonts()
     RegisterMedia()

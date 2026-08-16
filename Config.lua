@@ -2480,13 +2480,20 @@ local function buildRailPane(parent)
       return true
     end,
     delete = function()
-      if not GB:DeleteProfile(GB:ActiveProfileName()) then return false, "Can't delete the last profile." end
+      local gone = GB:ActiveProfileName()
+      local ok, landedOn = GB:DeleteProfile(gone)
+      if not ok then return false, "Can't delete the last profile." end
+      -- Say where this character went. The fallback is arbitrary (Core picks it
+      -- with `next`), so silence here left you on some other profile with no clue
+      -- which. The note line is cleared on success, so this goes to chat.
+      GB.msg(("deleted profile |cffffffff%s|r — this character is now on |cffffffff%s|r.")
+        :format(gone, tostring(landedOn)))
       return true
     end,
     onChange = function() C:Refresh() end,
     tips = {
       dropdown = "The active profile for this character. Each character remembers its own; the profile library is shared account-wide.",
-      new      = "Creates a profile starting from the current look, and switches to it.",
+      new      = "Creates a profile with the default look, and switches to it. To start from THIS look instead, use Copy.",
       copy     = "Duplicates this profile — presets, bar assignments and all — and switches to the copy.",
       rename   = "Renames this profile. Characters using it follow the new name.",
       delete   = "Deletes this profile (you'll be asked to confirm). Characters using it fall back to another profile. The last profile can't be deleted.",
@@ -2494,13 +2501,18 @@ local function buildRailPane(parent)
   })
   profBlock.frame:SetPoint("TOPLEFT", X, -60)
 
-  local div = hLine(rail); div:SetPoint("TOPLEFT", X, -180); div:SetPoint("TOPRIGHT", -X, -180)
-
   -- PRESET block (the edit target). No Copy — "New preset" already starts from
   -- the current look — so the shared block lays its buttons out 3-across.
+  --
+  -- ★ Pinned to the BOTTOM of the rail and drawn in ORANGE, not purple (the owner,
+  -- 2026-08-15). Stacked directly under PROFILE in the same colour, the two blocks
+  -- were the same control twice and it was genuinely hard to tell which scope a
+  -- button belonged to. Separating them by position AND colour is what makes the
+  -- profile/preset distinction readable at a glance.
   local presetBlock = UI.profileBlock(rail, W, {
     noun   = "preset",
     title  = "PRESET (BEING EDITED)",
+    accent = COLOR.orange,
     names  = function() local prof = GB:ActiveProfile(); return sortedNames(prof and prof.presets) end,
     active = editName,
     switch = function(v) GB:SwitchPreset(v) end,
@@ -2526,7 +2538,12 @@ local function buildRailPane(parent)
       delete   = "Deletes this preset (you'll be asked to confirm). Bars assigned to it fall back to another preset. The last preset can't be deleted.",
     },
   })
-  presetBlock.frame:SetPoint("TOPLEFT", X, -192)
+  presetBlock.frame:SetPoint("BOTTOMLEFT", X, 18)
+  -- Divider sits just above it, so the rail reads: profile at the top, the look
+  -- being edited at the bottom, empty space between them.
+  local divY = 18 + presetBlock.height + 16
+  local div = hLine(rail)
+  div:SetPoint("BOTTOMLEFT", X, divY); div:SetPoint("BOTTOMRIGHT", -X, divY)
 
   local railRefresh = function()
     profBlock:refresh(); presetBlock:refresh()

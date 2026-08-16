@@ -11,10 +11,76 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
-**Last updated:** 2026-07-26 (session end) · **Shipped: `v1.2.0`** · **No open bugs.**
-Landed this session: per-bar preset context fix, `GB.Icons` per-action icon overrides, and the
-Quick Keybind gold square. Stale 2026-07-18 sections retired to the archive.
+**Last updated:** 2026-08-15 (session end) · **Shipped: `v1.2.0`** · **No open bugs.**
+Landed this session: the profile model rework — New now means the FACTORY look, and per-character
+profiles are actually LOADED at login (they never were). See the block below.
+Previously: per-bar preset context fix, `GB.Icons` per-action icon overrides, Quick Keybind gold square.
 Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
+
+---
+
+## ★★ THE PROFILE MODEL — reworked 2026-08-15, after the owner said it was confusing
+
+He asked what New / Copy / Rename actually did. Reading the code to answer him found a real bug and
+three naming problems. **All of this is settled; do not relitigate it.**
+
+### The bug — profiles were stored but never applied
+
+`PLAYER_LOGIN` bound the character to its profile and **never called `LoadPreset`**. Because
+`GloomsBarsDB` is account-wide and `GB.db`'s visual fields ARE the live working copy, every
+character rendered whatever the last-played character left behind — and `PLAYER_LOGOUT` then wrote
+that stale look into *this* character's edit preset. Full write-up and evidence:
+`~/GloomsHub/docs/FINDINGS.md` §11. The login branch now ends with `GB:LoadPreset(...)`.
+
+⚠ **Presets that were already overwritten stay overwritten.** A character may look wrong ONCE after
+the fix and then be stable. Do not diagnose that as a regression.
+
+### New vs Copy
+
+- **`GB:CreateProfile`** now seeds from **`GB:DefaultPreset()`** — the factory look — not from a
+  snapshot of the current one. GA and Overlays always split New/Copy this way; GB was the outlier.
+- **`GB:CopyProfile`** is unchanged: a full `deepcopy` of the ACTIVE profile, presets and bar
+  assignments included.
+- ★ **`GB:DefaultPreset()` must supply ALL 39 `PRESET_FIELDS`.** `LoadPreset` skips `nil` fields, so
+  a gap silently leaves the new profile wearing the OLD one's value. Three fields are not in
+  `DB_DEFAULTS` and are supplied explicitly — `styleData`, `handShape`, `triggers`. **Do not "tidy"
+  them into `DB_DEFAULTS`:** the defaults-fill loop runs BEFORE the migration, so seeding
+  `handShape` there would pre-empt the legacy-shape derivation and change what upgraders get.
+- **`buildTriggerDefaults(src)`** is the ONE definition of the 8 per-trigger glow records, used by
+  both the session-10 migration (seeded from the live db) and `DefaultPreset` (seeded from
+  `DB_DEFAULTS`). Keep it that way or the two will drift.
+
+### First login
+
+A character's first login still auto-creates `"Name - Realm"`, but the look it starts with is now
+the factory one — **except for the VERY FIRST profile ever created**, which still snapshots the
+working copy. That exception is load-bearing: on an upgrade from a pre-profiles GB, the working copy
+IS the user's existing look, and seeding from defaults would wipe it. On a fresh install the two are
+identical, so the branch only ever protects the upgrade path.
+
+### The rail
+
+PROFILE stays at the top in purple; **PRESET is pinned to the BOTTOM of the rail and drawn orange**
+(`accent`, LibGloomSkin MINOR 7). The owner asked for this: two identical-looking blocks stacked in
+one colour read as a single control. It is not token drift.
+⚠ GB's convention is *purple = off, orange = on/selected*. The preset buttons are permanently orange
+and therefore bend that rule deliberately.
+
+### Small fixes in the same pass
+
+- Rename to the name it already has is a **silent no-op**, not "a profile with that name already
+  exists" (the dialog prefills the current name, so OK-without-typing hit this constantly). Same for
+  presets.
+- `DeleteProfile` returns `true, fallback`; Config prints which profile the character landed on.
+  The fallback is `next(db.profiles)` — **arbitrary table order**, so saying it out loud matters.
+- Name **trimming** now happens once in the Hub's shared `UI.nameDialog`, so GA and Overlays get it
+  too.
+
+### Still unverified
+
+The New button itself, the rename no-op, trimming, and the delete message have not been clicked.
+Suite BACKLOG item 5. **One open question for the owner:** he expected a new profile to look "like
+the default UI"; it produces GB's default (circles), not Blizzard's squares. Circles were kept.
 
 ---
 
