@@ -29,7 +29,6 @@ GB.Layout = Layout
 
 local appliedBars = {}   -- [barKey] = true — bars whose containers we've re-laid (need Release when un-owned)
 local pending = false    -- a combat-blocked apply; flushed when combat drops
-local gridVisible = false   -- an action is on the cursor (SHOWGRID) — empty-button collapse suspends
 
 -- True while GB itself is writing bar anchors. Our own re-anchor can re-enter
 -- Blizzard's global reposition pass (and therefore the hook we install on it),
@@ -86,9 +85,11 @@ watcher:SetScript("OnEvent", function(_, event)
     if Layout.MoveModeOn and Layout:MoveModeOn() then Layout:SetMoveMode(false) end
   elseif event == "PLAYER_REGEN_ENABLED" then
     if pending then pending = false; Layout:ApplyAll() end
-  elseif event == "ACTIONBAR_SHOWGRID" then gridVisible = true; queueApply()
-  elseif event == "ACTIONBAR_HIDEGRID" then gridVisible = false; queueApply()
-  else queueApply()   -- slot change, override/vehicle/page swaps, zone-in: re-assert layout + visibility
+  -- ACTIONBAR_SHOWGRID/HIDEGRID fall through to the plain re-apply below. They
+  -- used to flip a local `gridVisible` that suspended the empty collapse; that
+  -- collapse moved to Skin.lua (2026-08-24) and Skin keeps its OWN grid flag off
+  -- the same two events, so there is nothing left for Layout to track here.
+  else queueApply()   -- slot change, grid, override/vehicle/page swaps, zone-in: re-assert layout
   end
 end)
 
@@ -224,14 +225,17 @@ local function applyBar(barKey)
     if cont then
       local inGrid = i <= count
       local show = inGrid
-      -- Empty-button collapse (c.showEmpty == false, the owner: "or does it just
-      -- disappear entirely"): react to the rendered icon — Blizzard Hide()s
-      -- it when the slot has no action (the skin's empty-slot signal, no API
-      -- read). Suspended while the pickup grid is out (drop targets stay).
-      if show and c.showEmpty == false and not gridVisible then
-        local ic = btn.icon or btn.Icon
-        if not (ic and ic:IsShown()) then show = false end
-      end
+      -- ★ EMPTY-BUTTON COLLAPSE LIVES IN Skin.lua NOW (2026-08-24). It used to
+      -- clear `show` here, hiding the container. That could not hold: Blizzard's
+      -- ActionBarMixin:UpdateShownButtons re-shows the container of every
+      -- in-range slot, and ApplyAll is a hard no-op in combat — so a mid-fight
+      -- re-show stuck until PLAYER_REGEN_ENABLED (owner-reported, TESTED).
+      -- Skin's applyEmptyAlpha answers c.showEmpty on the ALPHA path instead,
+      -- which is not combat-restricted and re-asserts from the per-button Update
+      -- post-hook. The container stays SHOWN and keeps its grid slot exactly as
+      -- before (a hole, not a shuffle) — only the button goes invisible, which
+      -- is what the collapse always looked like anyway.
+      -- ⚠ Do not reinstate the hide here; see the comment on collapseEmpty.
       cont:SetShown(show)
       local native = cont:GetWidth()   -- unscaled (SetScale never changes it)
       local scale, px

@@ -11,6 +11,35 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 
+---
+
+## ▶▶▶ 2026-08-24 — the empty-slot collapse is an ALPHA treatment now
+
+**Measured record: `~/GloomsHub/docs/FINDINGS.md` §13.** GB-specific detail only here.
+
+The per-bar "hide empty buttons" (`c.showEmpty == false`) used to clear `show` in `Layout.lua` and
+hide the button's **container**. That could never hold: Blizzard's `ActionBarMixin:UpdateShownButtons`
+re-shows the container of every in-range slot regardless of whether it holds an action, and
+`Layout:ApplyAll()` is a hard no-op in combat. Hovering a bar mid-fight brought empty buttons back
+at the global dim alpha, and they stayed until `PLAYER_REGEN_ENABLED`.
+
+**It is answered in `Skin.lua`'s `applyEmptyAlpha` now**, alongside the global Empty-slots mode —
+one mechanism instead of two features fighting. A bar set to hide its empties outranks the global
+Dim/Normal setting. Alpha is not geometry, is not combat-restricted, and rides the per-button Update
+post-hook that already runs mid-fight, so it re-asserts itself.
+
+- ⚠ **Do not reinstate `cont:SetShown(false)` for empties.** Comments at both ends say so.
+- **`collapseEmpty` respects the master layout switch.** Layout off = Edit Mode owns the bars, so a
+  stale `showEmpty` cannot strand buttons invisible with no visible way back.
+- **Both setters refresh the alpha path directly** — `apply()` routes through `Layout:Reassert`,
+  which gates on combat, so the refresh cannot ride along with it.
+- `Layout.lua`'s `gridVisible` was deleted: it existed only to suspend the collapse during a drag,
+  and `Skin` keeps its own flag off the same two events. Drag behaviour is unchanged.
+- **This was the FOURTH instance of one pattern** (timewalking, Edit Mode, the 12.1
+  `EDIT_MODE_LAYOUTS_UPDATED` change, this). The first three were each fixed by registering one more
+  event. **That approach is exhausted** — in combat the geometry wall gags us whatever fires.
+
+
 **Last updated:** 2026-08-15 (session end) · **Shipped: `v1.2.0`** · **No open bugs.**
 Landed this session: the profile model rework — New now means the FACTORY look, and per-character
 profiles are actually LOADED at login (they never were). See the block below.

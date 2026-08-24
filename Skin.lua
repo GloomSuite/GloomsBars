@@ -203,10 +203,39 @@ end
 -- return to full alpha so drop targets stay visible.
 -- ---------------------------------------------------------------------------
 local gridShown = false
+-- Per-bar "hide empty buttons" (Layout's c.showEmpty == false) is answered HERE,
+-- on the alpha path, and no longer by hiding the container in Layout.
+--
+-- ⚠ WHY (owner-reported + TESTED 2026-08-24). Layout used cont:SetShown(false).
+-- Blizzard's ActionBarMixin:UpdateShownButtons re-shows that container for every
+-- in-range slot regardless of whether it holds an action:
+--     showButtonContainer = showButton or (not noSpacers and i <= numButtonsShowable)
+-- and Layout:ApplyAll is a HARD no-op in combat (InCombatLockdown -> pending),
+-- so nothing could put it back until the fight ended. Symptom: hovering a bar in
+-- combat brought empty buttons back at the global Dim alpha, and they stayed for
+-- the rest of the fight, then vanished on PLAYER_REGEN_ENABLED.
+--
+-- ★ This is the FOURTH instance of that pattern (see the Layout watcher's
+-- comments: timewalking, Edit Mode, the 12.1 EDIT_MODE_LAYOUTS_UPDATED change).
+-- The first three were each fixed by registering one more event. That could not
+-- work here: in combat the geometry wall gags us no matter which event fires.
+-- ALPHA is not geometry, is not combat-restricted, and rides the per-button
+-- Update post-hook that already runs in combat — so it re-asserts itself.
+-- Do not "restore" the container hide.
+local function collapseEmpty(rec)
+  local prof = GB.ActiveProfile and GB:ActiveProfile()
+  -- Master layout switch OFF = Edit Mode owns the bars, so a stale per-bar
+  -- showEmpty must not keep buttons invisible with no visible way back.
+  if not (prof and prof.layoutEnabled) then return false end
+  local bl = prof.barLayout
+  local bc = bl and rec.barKey and bl[rec.barKey]
+  return bc and bc.showEmpty == false
+end
 local function applyEmptyAlpha(btn)
   local rec = records[btn]
   if not (rec and rec.active) then return end
-  local mode = pv("emptySlots") or "normal"
+  -- A bar set to hide its empties outranks the global Dim/Normal setting.
+  local mode = collapseEmpty(rec) and "hide" or (pv("emptySlots") or "normal")
   local a = 1
   if mode ~= "normal" and not gridShown then
     local icon = btn.icon or btn.Icon

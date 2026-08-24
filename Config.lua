@@ -2585,6 +2585,9 @@ local function buildLayoutSection(bf, s)
     function(v)
       local prof = GB:ActiveProfile(); if prof then prof.layoutEnabled = v and true or false end
       if GB.Layout then GB.Layout:ApplyAll() end
+      -- Turning layout OFF must also release the empty-slot collapse (see
+      -- collapseEmpty) — that lives on the alpha path, not in ApplyAll.
+      if GB.Skin and GB.Skin.RefreshEmptySlots then GB.Skin:RefreshEmptySlots() end
       s.refresh()
     end)
   own:SetPoint("TOPRIGHT", -18, -12)
@@ -2702,6 +2705,9 @@ local function buildLayoutSection(bf, s)
       -- `or` eats it), which silently wrote Default here (the owner's bug).
       if ec[1] then c.showEmpty = nil else c.showEmpty = false end
       for _, e in ipairs(emBtns) do e.b:SetActive(e.v == ec[1]) end
+      -- The collapse is an ALPHA treatment in Skin now, and apply() -> Reassert
+      -- gates on combat, so the refresh cannot ride along with it.
+      if GB.Skin and GB.Skin.RefreshEmptySlots then GB.Skin:RefreshEmptySlots() end
       apply()
     end)
     emBtns[#emBtns + 1] = { b = b, v = ec[1] }; emPrev = b
