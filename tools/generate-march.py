@@ -29,8 +29,15 @@ import os
 from PIL import Image, ImageChops, ImageFilter
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ART = os.path.join(ROOT, "Media", "art")
-HAND = os.path.join(ART, "hand")
+# ★ Output moved to GLOOMSHUB (2026-08-25): the shaped animation engine is
+# GloomsHub.Effects now, so its shared textures ship with it. This generator
+# still lives with GB's art pipeline but writes into the sibling repo.
+EFFECTS = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "effects")
+# ★ The per-shape masks live in GLOOMSHUB now (2026-08-25) — the silhouette catalog
+# and its art moved there so Gloom's Auras could draw the same shapes. This script
+# still lives with GB's art pipeline but writes into the sibling repo. Shared
+# (non-per-shape) textures below still belong to GB.
+HAND = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "shapes")
 
 # --- Dash (shared) ----------------------------------------------------------
 # A dash = a short SOLID angular wedge with lightly feathered ends, bright across all
@@ -62,7 +69,7 @@ def make_dash():
             else:
                 val = math.exp(-((d - DASH_HALF) / FEATHER) ** 2)   # soft ends
             px[x, y] = (255, 255, 255, int(max(0.0, min(1.0, val)) * 255))
-    img.save(os.path.join(ART, "march.png"))
+    img.save(os.path.join(EFFECTS, "march.png"))
     print(f"  dash: {DASH_S}x{DASH_S} narrow wedge "
           f"(core ~{math.degrees(2 * DASH_HALF):.0f} deg) -> Media/art/march.png")
 

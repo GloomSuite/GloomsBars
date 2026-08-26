@@ -21,7 +21,10 @@ import os
 from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ART = os.path.join(ROOT, "Media", "art")
+# ★ Output moved to GLOOMSHUB (2026-08-25): the shaped animation engine is
+# GloomsHub.Effects now, so its shared textures ship with it. This generator
+# still lives with GB's art pipeline but writes into the sibling repo.
+EFFECTS = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "effects")
 
 RADAR_S = 256
 HEAD = math.radians(-90)     # bright leading edge points "up" at rest; engine rotation carries it round
@@ -49,7 +52,7 @@ def make_radar():
             if r > EDGE0:                           # soft transparent padding at the canvas rim
                 val *= max(0.0, (EDGE1 - r) / (EDGE1 - EDGE0))
             px[x, y] = (255, 255, 255, int(max(0.0, min(1.0, val)) * 255))
-    img.save(os.path.join(ART, "radar.png"))
+    img.save(os.path.join(EFFECTS, "radar.png"))
     print(f"  radar: {RADAR_S}x{RADAR_S} wedge (trail ~{math.degrees(TRAIL):.0f} deg) -> Media/art/radar.png")
 
 

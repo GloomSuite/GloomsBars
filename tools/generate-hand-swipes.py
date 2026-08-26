@@ -19,7 +19,11 @@ import os
 
 from PIL import Image
 
-HAND = os.path.join(os.path.dirname(__file__), "..", "Media", "art", "hand")
+# ★ The per-shape masks live in GLOOMSHUB now (2026-08-25) — the silhouette catalog
+# and its art moved there so Gloom's Auras could draw the same shapes. This script
+# still lives with GB's art pipeline but writes into the sibling repo. Shared
+# (non-per-shape) textures below still belong to GB.
+HAND = os.path.join(os.path.dirname(__file__), "..", "..", "GloomsHub", "Media", "art", "shapes")
 MARGIN = 128        # ART-SPEC: icon reference rect centered with a 128px margin all sides
 S = 256             # square, power-of-2 swipe
 SWEEP = 0.8         # matches generate-art.py swipe_alpha

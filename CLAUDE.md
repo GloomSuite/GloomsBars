@@ -29,7 +29,15 @@
 > repo OWNS it and **say so in one line, up front**. Then get his go-ahead and do it from wherever
 > you are. The goal is that no cross-repo edit happens *silently* — not that he moves.
 >
-> **Belongs HERE (`~/GloomsBars`):** action-bar skin, shapes/catalog + art, glows, layout, presets, profiles, the contents of the Bars tab.
+> **Belongs HERE (`~/GloomsBars`):** action-bar skin, layout, presets, profiles, glow TRIGGERING
+> (the spell-alert + assisted-highlight hooks, `Glows.lua`), which shape a button wears, the
+> contents of the Bars tab.
+> ⚠ **The silhouette CATALOG, its ART and the eight ANIMATION MODULES moved to GloomsHub on
+> 2026-08-25** (`Shapes.lua` / `Effects.lua` / `Media/art/shapes` / `Media/art/effects`) so Gloom's
+> Auras could draw the same shapes without a duplicate copy. `GB.HAND_SHAPES` / `HAND_ORDER` /
+> `HAND_GROUPS` / `GB:HandAsset` are unchanged ALIASES onto the Hub's, and `GB.Anims` kept its whole
+> public surface — so nothing in this repo calls it differently. **Do not restore the old line, and
+> do not copy the art back.** Hub CONTRACTS §7-§8.
 > **Belongs in `~/GloomsHub`:** the Suite window + tab API · the shared `LibGloomSkin` toolkit
 > (tokens, widgets, `UI.*`) · media registration/catalog/resolver + the Media tab · the one minimap
 > launcher · the suite docs and backlog.

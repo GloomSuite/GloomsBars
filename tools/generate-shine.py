@@ -20,8 +20,15 @@ import os
 from PIL import Image, ImageChops, ImageFilter
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ART = os.path.join(ROOT, "Media", "art")
-HAND = os.path.join(ART, "hand")
+# ★ Output moved to GLOOMSHUB (2026-08-25): the shaped animation engine is
+# GloomsHub.Effects now, so its shared textures ship with it. This generator
+# still lives with GB's art pipeline but writes into the sibling repo.
+EFFECTS = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "effects")
+# ★ The per-shape masks live in GLOOMSHUB now (2026-08-25) — the silhouette catalog
+# and its art moved there so Gloom's Auras could draw the same shapes. This script
+# still lives with GB's art pipeline but writes into the sibling repo. Shared
+# (non-per-shape) textures below still belong to GB.
+HAND = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "shapes")
 
 # --- Comet (shared) ---------------------------------------------------------
 # A compact glowing POINT with a short, dim trailing tail (not a wide wedge). The
@@ -55,7 +62,7 @@ def make_comet():
             else:                                   # leading side: crisp
                 val = math.exp(-((2 * math.pi - delta) / LEAD) ** 2)
             px[x, y] = (255, 255, 255, int(max(0.0, min(1.0, val)) * 255))
-    img.save(os.path.join(ART, "shine.png"))
+    img.save(os.path.join(EFFECTS, "shine.png"))
     print(f"  comet: {COMET_S}x{COMET_S} point + tail -> Media/art/shine.png")
 
 

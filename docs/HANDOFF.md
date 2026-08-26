@@ -13,6 +13,45 @@
 
 ---
 
+## ▶▶▶ 2026-08-25 — the shapes and the animation modules LEFT this repo
+
+**Measured record: `~/GloomsHub/docs/FINDINGS.md` §14. API: Hub CONTRACTS §7-§8.** GB detail only here.
+
+Gloom's Auras now draws the suite's silhouettes too, so keeping a second copy of the catalog and 136
+art files here would have guaranteed drift. **What moved to `~/GloomsHub`:**
+
+- the 21-shape catalog → `Shapes.lua` · the art → `Media/art/shapes/` (was `Media/art/hand/`)
+- all eight animation MODULES → `Effects.lua` · their 5 shared textures → `Media/art/effects/`
+
+**What did NOT move, and why it matters:**
+
+- **`Glows.lua` is untouched.** The multi-part shaped halo is entangled with the spell-alert and
+  assisted-highlight hooks, and its outer glow has a SOLID CENTRE that only reads correctly because
+  an opaque button icon covers it. GA gets its glow from the hollow rim-based modules instead. **Do
+  not extract this "for consistency".**
+- **`Anims.lua` kept every public method** — `Get`/`Each`/`Params`/`Enabled`/`Reconcile`/
+  `Invalidate`/`PreviewReconcile` — and shrank 835 → 90 lines. It is wiring now: which trigger runs
+  which animation, the per-trigger params in `GB.db`, the reconcile loop over buttons. **`Config.lua`
+  and `Glows.lua` did not change at all**, which was checked by confirming nothing anywhere reaches
+  into `Anims.modules` or `Anims.order`.
+- **`hgAnchor` stayed local**, and now has a twin in the Hub (`GloomsHub:GrowAnchor`). Verified
+  line-for-line identical by script. ⚠ **Change one, change both** — Hub backlog item 10.
+
+**The engine must DEGRADE, never error** (CONTRACTS §6). `GB:HandAsset` returns a path for any
+non-nil key even against an ancient Hub; `HAND_SHAPES` falls back to a one-entry circle catalog;
+`Anims` resolves `GloomsHub.Effects` per call and runs nothing when absent. `Config.lua`'s login
+gate now also fires when the catalog is missing — **and its message no longer says "your action bars
+keep working normally", because without shape art they would not.**
+
+**Owner-QA'd 2026-08-25** in two stages, each verified before the next started: all 21 picker
+thumbnails plus procs and cooldown sweeps unchanged; then the animations, confirmed still tracing the
+button's own silhouette rather than a circle.
+
+⚠ **`tools/generate-{shine,march,hand-swipes,radar,sheen,sparkle}.py` now write into the sibling
+Hub repo.** They still live here with GB's art pipeline. Verified they still see all 21 base masks.
+
+---
+
 ## ▶▶▶ 2026-08-24 — the empty-slot collapse is an ALPHA treatment now
 
 **Measured record: `~/GloomsHub/docs/FINDINGS.md` §13.** GB-specific detail only here.

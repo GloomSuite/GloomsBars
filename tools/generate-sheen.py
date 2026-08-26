@@ -22,7 +22,10 @@ import os
 from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ART = os.path.join(ROOT, "Media", "art")
+# ★ Output moved to GLOOMSHUB (2026-08-25): the shaped animation engine is
+# GloomsHub.Effects now, so its shared textures ship with it. This generator
+# still lives with GB's art pipeline but writes into the sibling repo.
+EFFECTS = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "effects")
 
 SHEEN_S = 256          # square canvas; the engine sizes/tilts/sweeps it over the icon
 SHEEN_SIGMA = 15.0     # perpendicular gaussian (px) — the bar's half-thickness feel at width 1
@@ -37,7 +40,7 @@ def make_sheen():
             dx = x - c                                  # vertical bar: brightness by horizontal distance only
             val = math.exp(-(dx / SHEEN_SIGMA) ** 2)    # bright core down the middle, soft fade left/right
             px[x, y] = (255, 255, 255, int(max(0.0, min(1.0, val)) * 255))
-    img.save(os.path.join(ART, "sheen.png"))
+    img.save(os.path.join(EFFECTS, "sheen.png"))
     print(f"  sheen: {SHEEN_S}x{SHEEN_S} vertical bar (sigma {SHEEN_SIGMA:.0f}px) -> Media/art/sheen.png")
 
 

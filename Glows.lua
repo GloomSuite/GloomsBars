@@ -61,7 +61,7 @@ end
 -- glow UNDER the icon (perfect outward falloff — the opaque icon hides the solid
 -- centre, only the bloom peeks out) + an INNER glow OVER the gradient (interior-
 -- edge tint, fading to a clean centre) + the Border recoloured to the glow tint.
--- One tintable WHITE pair per shape (Media/art/hand/<key>-outer|-inner) serves
+-- One tintable WHITE pair per shape (GloomsHub's Media/art/shapes/<key>-outer|-inner) serves
 -- procs / hover / cast / finish, differing only by tint. (The pre-hand SDF
 -- soft-bloom fallback was unreachable — db.handShape is always seeded — and was
 -- removed in session 12 along with the /gb glowtest bake-off harness.)

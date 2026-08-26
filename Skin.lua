@@ -295,7 +295,7 @@ local function mixedCornerBase()
 end
 
 -- Hand-authored shapes: while a hand shape is active, EVERY masked element (icon,
--- gradient plate, border) sources from Media/art/hand/<key>-base.png, whose
+-- gradient plate, border) sources from GloomsHub's Media/art/shapes/<key>-base.png, whose
 -- silhouette sits in the centre 256 of a 512 canvas — so to map it onto a region we
 -- expand the region by HALF its short side (`pad` extends further, e.g. a border's
 -- thickness). The two mask anchors below defer here when a hand shape is set; overlay

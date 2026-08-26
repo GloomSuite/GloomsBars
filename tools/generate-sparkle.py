@@ -20,7 +20,10 @@ import os
 from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ART = os.path.join(ROOT, "Media", "art")
+# ★ Output moved to GLOOMSHUB (2026-08-25): the shaped animation engine is
+# GloomsHub.Effects now, so its shared textures ship with it. This generator
+# still lives with GB's art pipeline but writes into the sibling repo.
+EFFECTS = os.path.join(ROOT, "..", "GloomsHub", "Media", "art", "effects")
 
 SPARK_S = 128          # small square canvas (a sparkle is tiny)
 CORE_SIGMA = 4.5       # bright central dot
@@ -41,7 +44,7 @@ def make_sparkle():
             vray = math.exp(-(dx * dx) / (2 * SPIKE_THICK * SPIKE_THICK)) * math.exp(-abs(dy) / SPIKE_LEN)
             val = max(core, SPIKE_AMP * hray, SPIKE_AMP * vray)
             px[x, y] = (255, 255, 255, int(max(0.0, min(1.0, val)) * 255))
-    img.save(os.path.join(ART, "sparkle.png"))
+    img.save(os.path.join(EFFECTS, "sparkle.png"))
     print(f"  sparkle: {SPARK_S}x{SPARK_S} 4-point star (core {CORE_SIGMA}px, rays ~{SPIKE_LEN:.0f}px) "
           f"-> Media/art/sparkle.png")
 

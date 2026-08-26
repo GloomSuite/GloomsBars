@@ -38,15 +38,25 @@ GB.Config = C
 local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 5   -- 5: setFont must RETURN success (the font picker branches on it)
 
 local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
-if not Skin or (skinMinor or 0) < SKIN_NEEDS then
+-- ★ The silhouette catalog and its art live in GloomsHub since 2026-08-25, and this
+-- tab's shape picker is built straight off it — so an absent catalog means the same
+-- fix as an old toolkit ("update the Hub") and belongs in the same one message.
+-- Core.lua's engine-side fallback keeps the bars from erroring meanwhile; this is
+-- only what TELLS the user, which is the half a silent degrade never does.
+local hubShapes = _G.GloomsHub and _G.GloomsHub.SHAPES
+if not Skin or (skinMinor or 0) < SKIN_NEEDS or not hubShapes then
   local found = Skin and ("v" .. tostring(skinMinor or 0)) or "none"
+  -- The old tail promised the bars keep working normally. With no catalog that is no
+  -- longer true — the buttons lose their shaped art — and the message must not lie.
+  local tail = hubShapes and " Your action bars keep working normally."
+    or " Your buttons will also lose their shaped art until you do."
   local warn = CreateFrame("Frame")
   warn:RegisterEvent("PLAYER_LOGIN")
   warn:SetScript("OnEvent", function(self)
     self:UnregisterAllEvents()
     print("|cffff7729Gloom's Bars:|r please update |cff936bffGloom's Hub|r. This version of "
       .. "Bars needs a newer Hub toolkit (needs v" .. SKIN_NEEDS .. ", found " .. found
-      .. "), so the BARS tab is unavailable. Your action bars keep working normally.")
+      .. "), so the BARS tab is unavailable." .. tail)
   end)
   return   -- chunk-level return: the tab is never registered; the bar ENGINE is untouched
 end

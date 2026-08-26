@@ -85,54 +85,41 @@ end
 -- silhouette can never warp. Each entry: aspect = long/short side ratio, orient =
 -- which axis is the long one ("square" = 1:1). The engine derives the icon's W/H
 -- from aspect × orient × naturalSize × sizeScale, so a shape is always the right
--- proportion (no manual sizing). Files: Media/art/hand/<key>-base|-outer|-inner.png.
+-- proportion (no manual sizing).
+--
+-- ★ THE CATALOG AND ITS ART MOVED TO GLOOMSHUB (2026-08-25). Gloom's Auras now
+-- draws the same silhouettes, so keeping a second copy here would have meant 136
+-- duplicated files and a catalog guaranteed to drift. The definitions live in
+-- GloomsHub/Shapes.lua and the art in GloomsHub\Media\art\shapes\. GB still owns
+-- everything ABOUT shapes that is GB's: which shape a button wears, the picker,
+-- the plate extension, and every glow and animation that traces one. What left is
+-- the vocabulary and the files.
+--
+-- The names below are unchanged aliases, so all ~25 call sites still read
+-- GB.HAND_SHAPES / GB.HAND_ORDER / GB:HandAsset exactly as before.
 -- ---------------------------------------------------------------------------
-local HAND_DEF = {  -- { key, aspect, orient, label }, in picker order
-  -- 1:1 footprint
-  { "circle",        1,   "square",    "Circle" },
-  { "square",        1,   "square",    "Square" },
-  { "roundsq1",      1,   "square",    "Rounded 1" },
-  { "roundsq2",      1,   "square",    "Rounded 2" },
-  { "roundsq3",      1,   "square",    "Rounded 3" },
-  { "hexagon",       1,   "square",    "Hexagon" },
-  { "diamond",       1,   "square",    "Diamond" },
-  { "tombstone",     1,   "square",    "Tombstone" },
-  { "tombstone-inv", 1,   "square",    "Tombstone (inv.)" },
-  -- portrait-elongated (3:2 & 2:1) — these carry the plate-extension option
-  { "pill32",        1.5, "portrait",  "Pill 3:2" },
-  { "pill21",        2,   "portrait",  "Pill 2:1" },
-  { "square32",      1.5, "portrait",  "Tall square 3:2" },
-  { "square21",      2,   "portrait",  "Tall square 2:1" },
-  { "roundsq1-32",   1.5, "portrait",  "Tall rounded 1 · 3:2" },
-  { "roundsq1-21",   2,   "portrait",  "Tall rounded 1 · 2:1" },
-  { "roundsq2-32",   1.5, "portrait",  "Tall rounded 2 · 3:2" },
-  { "roundsq2-21",   2,   "portrait",  "Tall rounded 2 · 2:1" },
-  { "roundsq3-32",   1.5, "portrait",  "Tall rounded 3 · 3:2" },
-  { "roundsq3-21",   2,   "portrait",  "Tall rounded 3 · 2:1" },
-  -- landscape-elongated (3:2 & 2:1) — no plate extension
-  { "square32w",     1.5, "landscape", "Wide square 3:2" },
-  { "square21w",     2,   "landscape", "Wide square 2:1" },
-}
-GB.HAND_SHAPES = {}   -- key → { aspect, orient, label }
-GB.HAND_ORDER  = {}   -- ordered list of keys (picker order)
-for _, d in ipairs(HAND_DEF) do
-  GB.HAND_SHAPES[d[1]] = { aspect = d[2], orient = d[3], label = d[4] }
-  GB.HAND_ORDER[#GB.HAND_ORDER + 1] = d[1]
-end
--- Grouped for the Config picker (grouped thumbnail grid).
-GB.HAND_GROUPS = {
-  { title = "1:1", keys = { "circle", "square", "roundsq1", "roundsq2", "roundsq3",
-                            "hexagon", "diamond", "tombstone", "tombstone-inv" } },
-  { title = "Portrait", keys = { "pill32", "pill21", "square32", "square21",
-                                 "roundsq1-32", "roundsq1-21", "roundsq2-32", "roundsq2-21",
-                                 "roundsq3-32", "roundsq3-21" } },
-  { title = "Landscape", keys = { "square32w", "square21w" } },
-}
+local HUB = _G.GloomsHub
 
--- Media paths for a hand silhouette's three assets (base = icon mask; outer/inner
--- = the multi-part glow, wired to triggers in a later step).
+-- ⚠ ENGINE code, so it may never nil-call or nil-index no matter what Hub is
+-- installed — CONTRACTS §6: gate the UI, never the engine. A tool AHEAD of its Hub
+-- is the one real hazard, and here it degrades to "one shape, art may not draw",
+-- never to a Lua error in the skin path. Config.lua's version gate is what
+-- actually tells the user to update; this is the floor under it.
+GB.HAND_SHAPES = (HUB and HUB.SHAPES) or { circle = { aspect = 1, orient = "square", label = "Circle" } }
+GB.HAND_ORDER  = (HUB and HUB.SHAPE_ORDER) or { "circle" }
+GB.HAND_GROUPS = (HUB and HUB.SHAPE_GROUPS) or { { title = "1:1", keys = { "circle" } } }
+
+-- Media paths for a silhouette's assets (base = icon mask; outer/inner = the
+-- multi-part glow; rim/line = effect masks; swipe = the cooldown sweep).
+-- Always returns a string for a non-nil key, exactly as it did when the art was
+-- local: a path to a missing file draws nothing, which is a survivable degrade,
+-- whereas nil would change what a dozen SetTexture call sites receive.
+local HUB_SHAPE_ART = "Interface\\AddOns\\GloomsHub\\Media\\art\\shapes\\"
 function GB:HandAsset(key, part)
-  return GB.MEDIA .. "art\\hand\\" .. key .. "-" .. (part or "base") .. ".png"
+  if not key then return nil end
+  local hub = _G.GloomsHub
+  local p = hub and hub.ShapeAsset and hub:ShapeAsset(key, part)
+  return p or (HUB_SHAPE_ART .. key .. "-" .. (part or "base") .. ".png")
 end
 
 -- The active hand-shape key (db-backed) + its metadata; nil until first-run
