@@ -13,6 +13,33 @@
 
 ---
 
+## ▶▶▶ 2026-09-05 — the button-COUNT path had §13's bug too
+
+**Measured record: `~/GloomsHub/docs/FINDINGS.md` §13, the AMENDED block.** GB detail only here.
+
+A bar set below its full count (the owner's bars 1 and 2 at 8 of 12) brought buttons 9-12 back
+**mid-combat**. Same mechanism as the empty-slot collapse fixed on 08-24, in the path that was not
+converted: `applyBar` still did `cont:SetShown(false)` for out-of-grid slots, `Reassert` bails with
+`pending = true` in combat, and Blizzard's `UpdateShownButtons` re-shows every container up to ITS
+count — which is still 12.
+
+**Fix (`Layout.lua`):** out-of-grid containers get **alpha 0** *and* are **parked off-screen**;
+in-grid containers get alpha restored to 1. Alpha survives the combat re-show (Blizzard only calls
+`SetShown`); parking stops an invisible button eating clicks, which matters here because these sit
+at stale coordinates rather than keeping a hole in the grid. The `SetShown` hide is unchanged — the
+new treatment is belt-and-braces on top of it, not a replacement.
+
+⚠ **Parking is only safe because both positioning branches re-anchor every in-grid container on
+every pass** — that is what un-parks a slot when the count goes back up. Owner-verified 12 -> 8 -> 12
+on 2026-09-05. If that ever stops being true, raising a bar's count strands buttons off-screen with
+no visible clue, which is far worse than the bug this fixed.
+
+⚠ **Reproducing it needs HOVERING the bars in combat.** Nothing shows without something making
+Blizzard re-run `UpdateShownButtons` mid-fight. A bar that will not reproduce is usually missing the
+trigger, not fixed.
+
+---
+
 ## ▶▶▶ 2026-08-25 — the shapes and the animation modules LEFT this repo
 
 **Measured record: `~/GloomsHub/docs/FINDINGS.md` §14. API: Hub CONTRACTS §7-§8.** GB detail only here.

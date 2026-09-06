@@ -147,6 +147,11 @@ end
 -- Re-lay one owned bar's containers into our grid. Offsets are computed in
 -- BAR space then divided by the container scale (SetPoint offsets live in the
 -- CHILD's scaled space).
+-- Where an out-of-grid container goes to be harmless. Far enough off-screen that
+-- no UI scale or resolution brings it back, and anchored to UIParent so Blizzard
+-- moving the BAR FRAME cannot drag it into view.
+local PARK_X, PARK_Y = -10000, -10000
+
 local function applyBar(barKey)
   if not layoutOn() then return end
   local c = conf(barKey) or {}   -- an unconfigured bar lays out with the defaults
@@ -237,6 +242,41 @@ local function applyBar(barKey)
       -- is what the collapse always looked like anyway.
       -- ⚠ Do not reinstate the hide here; see the comment on collapseEmpty.
       cont:SetShown(show)
+
+      -- ★ OUT-OF-GRID BUTTONS GET THE SAME TREATMENT, for the same reason
+      -- (2026-09-05). The hide above is correct and stays — but it is only ever
+      -- written from here, and this whole function is combat-gated. Blizzard's
+      -- UpdateShownButtons re-shows the container of every slot up to ITS OWN
+      -- count (still 12 on a bar we have set to 8), so any mid-fight call --
+      -- HOVERING the bars is the one the owner reproduced, twice now -- brings
+      -- buttons 9-12 straight back. Our post-hook on that very function fires,
+      -- reaches `if InCombatLockdown() then pending = true; return end` in
+      -- Reassert, and defers until PLAYER_REGEN_ENABLED. Blizzard wins the fight.
+      --
+      -- This is FINDINGS §13 exactly, in the sibling path that was not converted
+      -- when the empty-slot collapse moved to alpha. Same answer:
+      --
+      --   ALPHA 0 -- not geometry, not combat-restricted, and Blizzard's re-show
+      --   only calls SetShown, so it never clears this. A re-shown container is
+      --   therefore invisible.
+      --
+      --   PARKED OFF-SCREEN -- because alpha 0 leaves the button CLICKABLE, and
+      --   unlike a collapsed empty (which keeps its own hole in the grid) these
+      --   sit at STALE coordinates: dropping 12 -> 8 re-centres the eight that
+      --   remain, so 9-12 are left lying on top of buttons that are still in use.
+      --   Invisible and clickable, over a button you need, is a worse bug than
+      --   the one being fixed. Parking is geometry, so it only happens out of
+      --   combat -- which is fine, because it only has to happen once.
+      --
+      -- Safe to park: both positioning branches below re-anchor every in-grid
+      -- container on every pass, so raising the count un-parks them automatically.
+      if inGrid then
+        cont:SetAlpha(1)   -- restore: this slot may have been parked at a lower count
+      else
+        cont:SetAlpha(0)
+        cont:ClearAllPoints()
+        cont:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", PARK_X, PARK_Y)
+      end
       local native = cont:GetWidth()   -- unscaled (SetScale never changes it)
       local scale, px
       if positioned then
