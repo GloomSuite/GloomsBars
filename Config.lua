@@ -2477,6 +2477,11 @@ local function buildRailPane(parent)
     names  = function() return sortedNames(GB.db and GB.db.profiles) end,
     active = function() return GB:ActiveProfileName() or "?" end,
     switch = function(v) GB:SetActiveProfile(v) end,
+    users  = function(name)
+      local o = {}
+      for char, p in pairs((GB.db and GB.db.charProfiles) or {}) do if p == name then o[#o + 1] = char end end
+      return o
+    end,
     create = function(name)
       if not GB:CreateProfile(name) then return false, "A profile with that name already exists." end
       GB:SetActiveProfile(name); return true

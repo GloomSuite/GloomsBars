@@ -382,21 +382,17 @@ end
 -- Anchor a hand texture/mask so its silhouette maps to the icon GROWN uniformly by
 -- `grow` screen-px on every side. The base's shape occupies a different FRACTION of the
 -- canvas per axis (short = 0.5, long = long/(long+256)), so a uniform margin would grow
--- the long axis more and flatten the caps — this compensates PER AXIS: the short axis
--- adds 2*grow, the long axis adds grow*(aspect+1)/aspect, which both land the edge exactly
--- `grow` px out. grow=0 → icon edge (icon/plate mask); grow=thickness → border outer edge
--- (border mask + the outer glow, so the glow blooms from OUTSIDE the border).
+-- the long axis more and flatten the caps — the formula compensates PER AXIS: the short
+-- axis adds 2*grow, the long axis adds grow*(aspect+1)/aspect, which both land the edge
+-- exactly `grow` px out. grow=0 → icon edge (icon/plate mask); grow=thickness → border
+-- outer edge (border mask + the outer glow, so the glow blooms from OUTSIDE the border).
+--
+-- The formula LIVES in the Hub (`GloomsHub:GrowAnchor`, Shapes.lua) since 2026-09-20:
+-- GB carried an identical local copy through the shapes migration so its geometry
+-- was untouched while "GB looks identical" was being proven; with that banked, the
+-- copy is gone and every shaped glow and effect in the suite grows from ONE function.
 local function hgAnchor(tex, icon, grow)
-  grow = grow or 0
-  local w, h = icon:GetWidth(), icon:GetHeight()
-  local m0 = 0.5 * math.min(w, h)
-  local aspect = math.max(w, h) / math.max(1, math.min(w, h))
-  local addS, addL = 2 * grow, grow * (aspect + 1) / aspect
-  local mx = m0 + (w <= h and addS or addL)
-  local my = m0 + (h < w and addS or addL)
-  tex:ClearAllPoints()
-  tex:SetPoint("TOPLEFT", icon, "TOPLEFT", -mx, my)
-  tex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", mx, -my)
+  return GloomsHub:GrowAnchor(tex, icon, grow)
 end
 
 -- Anchor a mask over the whole construction (padding-compensated per axis). `ext`

@@ -106,8 +106,17 @@ post-hook that already runs mid-fight, so it re-asserts itself.
   event. **That approach is exhausted** — in combat the geometry wall gags us whatever fires.
 
 
-**Last updated:** 2026-08-15 (session end) · **Shipped: `v1.2.0`** · **No open bugs.**
-Landed this session: the profile model rework — New now means the FACTORY look, and per-character
+**Last updated:** 2026-09-20 · **No open bugs.**
+Landed 2026-09-20 (from a Hub session): **the profile rework is fully owner-QA'd** — New (factory,
+circles: he confirmed circles are right), Rename-unchanged (silent no-op), a name with outer spaces
+(trimmed by the Hub's dialog), Delete (prints where the character landed) all clicked and correct.
+**The profile block passes `users(name)`** (from `GB.db.charProfiles`) so the delete confirmation
+names every other character on the profile — Hub CONTRACTS §4, the owner's ask after deleting a
+test profile without knowing who else used it. **`hgAnchor` is a one-line delegation to
+`GloomsHub:GrowAnchor`** (Skin.lua) — the two bodies were diffed identical first; six call sites
+untouched; the owner looked and nothing moved. Release state is a SUITE fact — its home of record
+is `~/GloomsHub/docs/SUITE-STATE.md`.
+Previously (2026-08-15): the profile model rework — New now means the FACTORY look, and per-character
 profiles are actually LOADED at login (they never were). See the block below.
 Previously: per-bar preset context fix, `GB.Icons` per-action icon overrides, Quick Keybind gold square.
 Release state is a SUITE fact — its home of record is `~/GloomsHub/docs/SUITE-STATE.md`.
