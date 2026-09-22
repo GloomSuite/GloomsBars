@@ -209,7 +209,7 @@ local function openFontFlyout(anchor, current, onPick)
     -- name CAN resolve to a missing file (see GB.SetFontSafe in Core.lua).
     if not setFont(row.text, fontPath(name), 14) then setFont(row.text, FONT.body, 13) end
     if name == current then row.text:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b)
-    else row.text:SetTextColor(1, 1, 1) end
+    else row.text:SetTextColor(TEXT.r, TEXT.g, TEXT.b) end   -- the transition (2026-09-21): the flyout plate is light now
     row:SetScript("OnClick", function() fly.catcher:Hide(); onPick(name) end)
     row:Show()
     y = y - ROW_H

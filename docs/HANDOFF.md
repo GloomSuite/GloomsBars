@@ -10,6 +10,11 @@
 >
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
+>
+> **2026-09-21 — the Suite window went light (Hub BACKLOG 16, stage 1); GB's tab is stage 3.**
+> Until then the Bars tab draws through the Hub's TRANSITION THEME (Hub CONTRACTS §1). The one GB
+> edit: the preset flyout's row text became the `TEXT` token (white vanished on the now-light
+> flyout plate). No behaviour changed. **Do not restyle or tidy the tab on its own.**
 
 ---
 
