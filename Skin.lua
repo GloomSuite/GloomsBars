@@ -479,7 +479,7 @@ end
 local function applyBorderColor(tex, bd)
   local col = bd.color or { 0, 0, 0 }
   local a = bd.alpha or 1
-  if bd.color2 then
+  if bd.color2 and bd.twoTone ~= false then   -- twoTone false = the tab switched it off but kept the colour (2026-09-21)
     local c2, orient = bd.color2, (bd.gradDir == "left" or bd.gradDir == "right") and "HORIZONTAL" or "VERTICAL"
     local g1 = CreateColor(col[1], col[2], col[3], (col[4] or 1) * a)
     local g2 = CreateColor(c2[1], c2[2], c2[3], (c2[4] or 1) * a)

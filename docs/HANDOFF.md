@@ -11,10 +11,55 @@
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 >
-> **2026-09-21 — the Suite window went light (Hub BACKLOG 16, stage 1); GB's tab is stage 3.**
-> Until then the Bars tab draws through the Hub's TRANSITION THEME (Hub CONTRACTS §1). The one GB
-> edit: the preset flyout's row text became the `TEXT` token (white vanished on the now-light
-> flyout plate). No behaviour changed. **Do not restyle or tidy the tab on its own.**
+> **2026-09-21 — the Bars tab is on the Hub's KIT (Hub BACKLOG 16, stage 3, owner-QA'd).**
+> `Config.lua` was rebuilt from the ten Figma mocks at their own coordinates; the design decisions
+> (button colours, bar tracks, chips, the dial, "dim not hide") are listed once, in the Hub's
+> BACKLOG 16. **Do not restyle the tab on its own** — read the mock (`~/GloomsHub/tools/figma.py`)
+> and the Hub's `Skin.lua` kit section first. GB-specific facts of the rebuild, below.
+
+---
+
+## ▶▶▶ 2026-09-21 — the Bars tab on the kit (redesign stage 3)
+
+**Shape.** The RAIL (250) holds the kit PRESET block (a white field picker + NEW · COPY / RENAME ·
+DELETE, 2 × 2 — the same `nameDialog` / `confirm` as the old `profileBlock`, with a refused name
+said in chat) over the dark PREVIEW pane (`#1e1e1e`: the 13 state buttons two across, the
+construction centred 266 under the pane's top, the caption at a fixed y=354 with 20px insets — or
+under a downward plate if that reaches lower). The PROFILE api became `PROFILE_API`, handed to
+`RegisterTab` (`profile`, `wordmark = "BARS"`) — the Suite window draws it in its footer. The
+accordion starts 20 under the tab's top at x=21; kit headers with the mocks' names (Shape & Icon ·
+Plate Construction · Decoration Layers · Text · Glows · Animations · Cast & Channel · Cooldown &
+Availability · Empty Slots · Bar Layout & Preset); `C:OpenSection(title)` and `STATE_DESC`'s
+"Styled in:" links (now inline, lilac, with pipes — the mock) use those exact names. Collapsing
+the open section scrolls to the top.
+
+**The tab has NO footer of its own now** (`FOOTER_H = 0`). What the old strip held moved into the
+Layout section's bottom row: Move Bars · Quick Keybind · Reset Positions · **Highlight Preset's
+Bars** (shortened so the row fits) · the **Gloom's Bars master switch** (the owner's choice from
+three offered spots). `C._enableToggle / _hlSync / _mvFooterSync` still exist and `C:Refresh`
+still syncs them.
+
+**Per-section facts worth knowing:**
+- Text: one `textBlock(bf, kind)` for all four texts; the kind supplies the head cell (Name's is
+  the DEFAULT | CUSTOM | HIDDEN bar), its zones (Countdown has none) and Keybind's Mac Symbol Icons.
+  The old `fontDropdown` / `openFontFlyout` (each font drawn in its own face) are DELETED — the kit
+  `UI.pick` lists names in Play. He has not asked for the preview back.
+- Glows: a table (Glow Status · Color · Layer · Opacity), one row per trigger 26 apart; the layer
+  is a three-option `UI.pick`, the opacity a `bare` dial. Its colour chips are REQUIRED (bare swatch).
+- Animations: the module's params are placed by KIND — colour chip beside the picker, `choice`
+  (Style) under it, `range` dials down the two right columns, and a `bispeed` (Spin / March /
+  Sweep) always at the second row's left slot because its "CCW 0.8s" readout widens the box.
+- Decoration: Two-Tone Border OFF keeps `color2` and sets `twoTone = false` (Skin.lua reads
+  `bd.color2 and bd.twoTone ~= false`) — switching it back on brings the same colour back. The
+  owner: wiping it "is bad".
+- Layout: the per-bar labels carry "(Bar N)"; the bar chips are dark `action` buttons with 6px
+  padding (the mock's 47px "BAR 1"); Empty Icons SHOW | HIDE is 10px padding (98px).
+- Segment padding is per mock: four-way direction bars 8, Colorize Icon 10, Orientation 9,
+  everything else the kit's 20. Do not "normalise" them.
+
+**Deleted as dead:** `stubBody`, the `colorSwatch` wrapper, `fontPath`, the font flyout, the
+`flatButton / makeToggle / sliderRow / dirRow / flatEditBox` aliases. `Config.lua` is 2,270 lines
+(was 3,150).
 
 ---
 

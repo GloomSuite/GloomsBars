@@ -35,7 +35,7 @@ GB.Config = C
 -- actionable sentence instead.
 -- ★ BUMP SKIN_NEEDS IN THE SAME COMMIT that first calls a newer widget.
 -- --------------------------------------------------------------------------
-local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 5   -- 5: setFont must RETURN success (the font picker branches on it)
+local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 12   -- 12: the KIT (button / pick / sectionHeader / dial / chip) + RegisterTab's `profile` footer — the redesign, stage 3
 
 local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
 -- ★ The silhouette catalog and its art live in GloomsHub since 2026-08-25, and this
@@ -68,15 +68,10 @@ local CARET_DOWN = UI.CARET_DOWN                -- rotate right-pointing source 
 
 local setFont, newText, addEdges = UI.setFont, UI.newText, UI.addEdges
 local skinPlate, hLine = UI.skinPlate, UI.hLine
-local flatButton, makeToggle, flatEditBox = UI.flatButton, UI.makeToggle, UI.flatEditBox
-local sliderRow, dirRow = UI.sliderRow, UI.dirRow
 -- Each swatch names the element it drives, for the picker's "in use" palette
 -- tooltip. The tool prefix lives HERE rather than at 20 call sites — six of them
 -- read only "Color" on screen, so the section is what tells them apart in that
 -- list. An older Hub simply ignores the extra argument.
-local function colorSwatch(parent, get, set, withAlpha, label)
-  return UI.colorSwatch(parent, get, set, withAlpha, label and ("Bars › " .. label))
-end
 local makeScrollbar, attachTip = UI.makeScrollbar, UI.attachTip
 
 -- Every (Hub font, size) pair this tab draws BEYOND the Hub's own warm list —
@@ -99,10 +94,17 @@ UI.RegisterWarmPairs({
 -- (always visible — it decides what everything else edits), the control
 -- accordion in the MIDDLE (widest — it absorbs any extra shell width), the
 -- preview pane on the RIGHT.
-local RAIL_W = 200               -- left rail: profile + preset selection
-local PREVIEW_W = 210            -- right preview pane width
-local FOOTER_H = 52              -- the tab's own footer row (master enable etc.)
-local SECTION_HDR_H = 36
+-- ★ REDESIGN STAGE 3 (2026-09-21, Hub BACKLOG 16): the mocks' Bars tab. The
+-- RAIL is 250 wide — the kit's PRESET block on a faint plate (120 tall) over
+-- the dark PREVIEW pane (the state buttons, the construction, the caption) —
+-- and the accordion fills the rest, headers at x=21 of the content pane. The
+-- profile row moved to the Suite window's footer (RegisterTab `profile`).
+local RAIL_W = 250               -- left rail: preset block + preview pane
+local RAIL_TOP_H = 120           -- the preset block's plate
+local PREVIEW_W = 0              -- (the preview lives in the rail now)
+local FOOTER_H = 0               -- the tab has no footer of its own; the Layout section holds Move / Keybind / Reset / Highlight / Enable
+local SECTION_HDR_H = 26         -- the kit header (16) + 10
+local BODY_GAP_TOP, BODY_GAP_BOTTOM = 10, 28   -- the mocks: body 20 under the header (10 + the header's 10), next header 28 after
 -- Padding-compensation for our masks (matches Skin.lua GROW_RATIO / the 240/256
 -- edge-padding rule) + the state-ring inset fit; kept local so the preview uses
 -- exactly the engine's geometry.
@@ -110,7 +112,7 @@ local GROW_RATIO = (256 / 240 - 1) / 2
 -- The construction (icon + extension) is centered vertically at this pane-Y so a
 -- plate growing above OR below stays put and never rides into the state chips or
 -- the caption (max construction ≈ 104 + 0.9·104 ≈ 198px, so ±99 clears both).
-local PREVIEW_CENTER_Y = -290    -- pushed down for the 7-row state-chip grid (session 12)
+local PREVIEW_CENTER_Y = -266    -- the mock: the 100px construction's centre, 266 under the preview pane's top
 
 local container, bodyContainer, contentScroll   -- container: the shell-provided Bars tab frame; contentScroll: the middle accordion's scroll frame (for scroll-to-top on open)
 local sections = {}
@@ -147,124 +149,28 @@ local function fontChoices()
   table.sort(t)
   return t
 end
-local function fontPath(name)
-  local lsm = GB.GetLSM and GB.GetLSM()
-  if lsm and name then local p = lsm:Fetch("font", name, true); if p then return p end end
-  return (GB.BUNDLED_FONTS and GB.BUNDLED_FONTS[name]) or GB.FONT.label
-end
-
-local fontFlyout
-local function fontFlyoutFrame()
-  if fontFlyout then return fontFlyout end
-  -- Full-screen catcher (child of the Bars container, so it auto-hides with
-  -- the tab AND the window) at a strata ABOVE the DIALOG shell → any click
-  -- outside the flyout closes it.
-  local catcher = CreateFrame("Button", nil, container)
-  catcher:SetFrameStrata("FULLSCREEN"); catcher:SetAllPoints(UIParent); catcher:Hide()
-  local fly = CreateFrame("Frame", nil, catcher)
-  fly:SetFrameStrata("FULLSCREEN_DIALOG"); fly:SetSize(210, 300)
-  skinPlate(fly); addEdges(fly, COLOR.rim, 1)
-  local scroll = CreateFrame("ScrollFrame", nil, fly)
-  scroll:SetPoint("TOPLEFT", 5, -5); scroll:SetPoint("BOTTOMRIGHT", -13, 5)
-  scroll:EnableMouseWheel(true)
-  local child = CreateFrame("Frame", nil, scroll); child:SetSize(190, 10)
-  scroll:SetScrollChild(child)
-
-  -- Custom thin scrollbar (shared helper): orange thumb + click-to-jump + drag + wheel.
-  local sb = makeScrollbar(fly, scroll, function(b) b:SetPoint("TOPRIGHT", -5, -6); b:SetPoint("BOTTOMRIGHT", -5, 6) end)
-  fly.updateThumb = sb.Sync
-  -- Content wheel (over the rows) scrolls the list; the bar syncs via its OnUpdate.
-  scroll:SetScript("OnMouseWheel", function(self, delta)
-    local range = math.max(0, child:GetHeight() - self:GetHeight())
-    self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 34)))
-  end)
-
-  catcher:SetScript("OnClick", function() catcher:Hide() end)
-  fly.catcher, fly.scroll, fly.child, fly.rows = catcher, scroll, child, {}
-  fontFlyout = fly
-  return fly
-end
-
-local function openFontFlyout(anchor, current, onPick)
-  local fly = fontFlyoutFrame()
-  local names, rows = fontChoices(), fly.rows
-  local ROW_H, y = 22, -2
-  for i, name in ipairs(names) do
-    local row = rows[i]
-    if not row then
-      row = CreateFrame("Button", nil, fly.child); row:SetHeight(ROW_H)
-      row.hl = row:CreateTexture(nil, "BACKGROUND"); row.hl:SetAllPoints()
-      row.hl:SetColorTexture(1, 1, 1, 0.07); row.hl:Hide()
-      row:SetScript("OnEnter", function(self) self.hl:Show() end)
-      row:SetScript("OnLeave", function(self) self.hl:Hide() end)
-      row.text = newText(row, FONT.body, 13, TEXT, "LEFT"); row.text:SetWordWrap(false)
-      row.text:SetPoint("LEFT", 8, 0); row.text:SetPoint("RIGHT", -8, 0)
-      rows[i] = row
-    end
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", 0, y); row:SetPoint("TOPRIGHT", 0, y)
-    row.text:SetText(name)
-    -- setFont is the lib's guarded helper: SetFont RAISES on a dead asset, so
-    -- the old `if not row.text:SetFont(…)` never reached this fallback. An LSM
-    -- name CAN resolve to a missing file (see GB.SetFontSafe in Core.lua).
-    if not setFont(row.text, fontPath(name), 14) then setFont(row.text, FONT.body, 13) end
-    if name == current then row.text:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b)
-    else row.text:SetTextColor(TEXT.r, TEXT.g, TEXT.b) end   -- the transition (2026-09-21): the flyout plate is light now
-    row:SetScript("OnClick", function() fly.catcher:Hide(); onPick(name) end)
-    row:Show()
-    y = y - ROW_H
-  end
-  for i = #names + 1, #rows do rows[i]:Hide() end
-  fly.child:SetHeight(math.max(10, #names * ROW_H + 4))
-  fly:SetHeight(math.min(300, #names * ROW_H + 10))   -- snug for short lists, scroll past ~13
-  fly:ClearAllPoints(); fly:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -2)
-  -- Open scrolled so the CURRENT font sits mid-view (not always the top of a long list).
-  local sel = 1
-  for i, name in ipairs(names) do if name == current then sel = i; break end end
-  local sh = fly:GetHeight() - 10
-  local range = math.max(0, fly.child:GetHeight() - sh)
-  local target = (sel - 1) * ROW_H - (sh - ROW_H) / 2
-  fly.scroll:SetVerticalScroll(math.max(0, math.min(range, target)))
-  fly.updateThumb()
-  fly.catcher:Show()
-end
-
--- Dropdown button: label drawn in the current font; click opens the flyout.
--- get() → current LSM font name, set(name) writes it. Returns the button (+:refresh).
-local function fontDropdown(parent, w, get, set)
-  local b = flatButton(parent, w, 22, COLOR.heroic, "", 11); b:SetBase(0.2)
-  b.text:SetWordWrap(false)
-  function b:refresh()
-    local n = get() or "GeneralSans SemiBold"
-    self.text:SetText(n)
-    if not setFont(self.text, fontPath(n), 11) then setFont(self.text, FONT.bodyM, 11) end
-  end
-  b:SetScript("OnClick", function() openFontFlyout(b, get(), function(name) set(name); b:refresh() end) end)
-  b:refresh()
-  return b
-end
-
 local function relayout()
   local prevBottom
   local total = 0
   for _, s in ipairs(sections) do
     s.header:ClearAllPoints()
     if prevBottom then
-      s.header:SetPoint("TOPLEFT", prevBottom, "BOTTOMLEFT", 0, 0)
-      s.header:SetPoint("TOPRIGHT", prevBottom, "BOTTOMRIGHT", 0, 0)
+      local gap = prevBottom.isBody and -BODY_GAP_BOTTOM or 0
+      s.header:SetPoint("TOPLEFT", prevBottom, "BOTTOMLEFT", 0, gap)
+      s.header:SetPoint("TOPRIGHT", prevBottom, "BOTTOMRIGHT", 0, gap)
     else
       s.header:SetPoint("TOPLEFT", bodyContainer, "TOPLEFT", 0, 0)
       s.header:SetPoint("TOPRIGHT", bodyContainer, "TOPRIGHT", 0, 0)
     end
-    s.caret:SetRotation(s.open and CARET_DOWN or 0)
+    s.header.button:SetOpen(s.open)
     total = total + SECTION_HDR_H
     if s.open then
       s.bodyFrame:ClearAllPoints()
-      s.bodyFrame:SetPoint("TOPLEFT", s.header, "BOTTOMLEFT", 0, 0)
-      s.bodyFrame:SetPoint("TOPRIGHT", s.header, "BOTTOMRIGHT", 0, 0)
+      s.bodyFrame:SetPoint("TOPLEFT", s.header, "BOTTOMLEFT", 0, -BODY_GAP_TOP)
+      s.bodyFrame:SetPoint("TOPRIGHT", s.header, "BOTTOMRIGHT", 0, -BODY_GAP_TOP)
       s.bodyFrame:Show()
       prevBottom = s.bodyFrame
-      total = total + (s.bodyFrame:GetHeight() or 0)
+      total = total + (s.bodyFrame:GetHeight() or 0) + BODY_GAP_TOP + BODY_GAP_BOTTOM
     else
       s.bodyFrame:Hide()
       prevBottom = s.header
@@ -281,42 +187,43 @@ local PREVIEW_CAPTION_DEFAULT = "Sample of the visible skin. Your clickable hit 
 -- Section-name hyperlink: |Hgbsec:<title>|h in caret orange (#FF7729); the caption
 -- frame's OnHyperlinkClick opens that accordion section. Display = the title in caps.
 local function secLink(title)
-  return ("|Hgbsec:%s|h|cffFF7729%s|r|h"):format(title, title:upper())
+  return ("|Hgbsec:%s|h|cffa881f8%s|r|h"):format(title, title)   -- lilac: the kit's link colour
 end
 -- The "Styled in:" bullet list under a state description (the owner: inline links were
 -- hard to follow). Items: a title string, or { title, note } where the note (in the
 -- muted body colour) marks which PART of the state that section covers.
+-- The mock (stage 3) writes it inline: "Styled in: Glows | Animations | Cast & Channel".
 local function linkList(items)
-  local out = { "Styled in:" }
+  local out = {}
   for _, it in ipairs(items) do
     local title, note = it, nil
     if type(it) == "table" then title, note = it[1], it[2] end
-    out[#out + 1] = "• " .. secLink(title) .. (note and (" — " .. note) or "")
+    out[#out + 1] = secLink(title) .. (note and (" (" .. note .. ")") or "")
   end
-  return table.concat(out, "\n")
+  return "Styled in: " .. table.concat(out, " | ")
 end
 local LL_GLOW = linkList({ "Glows", "Animations" })
-local LL_CDA = linkList({ "Cooldown & availability" })
-local LL_CAST = linkList({ "Glows", "Animations", { "Cast & channel", "fill & bursts" } })
+local LL_CDA = linkList({ "Cooldown & Availability" })
+local LL_CAST = linkList({ "Glows", "Animations", { "Cast & Channel", "fill & bursts" } })
 -- Each entry = { HEADING, body, links }: the state name (bold Semibold line), what
 -- triggers it in-game (plain prose), then the clickable "Styled in:" bullet list.
 local STATE_DESC = {
-  idle      = { "IDLE", "The button's resting/default look with nothing active.",
-                linkList({ "Shape & icon", "Plate", "Decoration layers", "Text" }) },
-  proc      = { "PROC", "Triggered when an ability procs (a free or empowered cast becomes ready).", LL_GLOW },
-  highlight = { "HIGHLIGHT", "Indicates the current location (if any) on your action bars when hovering over an ability or talent in your spellbook or talent tree.", LL_GLOW },
-  assist    = { "ASSIST", "Triggered by Blizzard's Combat Assistant/Assisted Highlight feature to indicate the suggested next rotation ability.", LL_GLOW },
-  cast      = { "CAST", "Shows while activating an ability with a cast time.", LL_CAST },
-  channel   = { "CHANNEL", "Shows while activating a channeled ability.", LL_CAST },
-  hover     = { "HOVER", "Shows while hovering your pointer over an icon in your action bars.", LL_GLOW },
-  selected  = { "SELECTED", "Displays when a button is toggled on (a stance, form or aura).", LL_GLOW },
-  flash     = { "FLASH", "Appears when auto-attack or auto-shot is active — typically needs the related auto-attack ability to be on the action bar. Not commonly seen.", LL_GLOW },
-  cooldown  = { "COOLDOWN", "A swipe animation and finish flash to indicate that an ability is recharging or ready.",
-                linkList({ "Cooldown & availability", { "Text", "countdown numbers" } }) },
-  unusable  = { "UNUSABLE", "Indicates an ability is unusable due to wrong talent, form/stance, weapon type, silenced, missing resource, etc.", LL_CDA },
-  oom       = { "OUT OF MANA", "Indicates you have insufficient mana or other resource/power to cast.", LL_CDA },
-  range     = { "OUT OF RANGE", "Shows when the target is too far for the ability to be cast. Tints the icon and recolors the keybind text (if shown).",
-                linkList({ { "Cooldown & availability", "enable & style" } }) },
+  idle      = { "Idle", "The button's resting/default look with nothing active.",
+                linkList({ "Shape & Icon", "Plate Construction", "Decoration Layers", "Text" }) },
+  proc      = { "Proc", "Triggered when an ability procs (a free or empowered cast becomes ready).", LL_GLOW },
+  highlight = { "Highlight", "Indicates the current location (if any) on your action bars when hovering over an ability or talent in your spellbook or talent tree.", LL_GLOW },
+  assist    = { "Assist", "Triggered by Blizzard's Combat Assistant/Assisted Highlight feature to indicate the suggested next rotation ability.", LL_GLOW },
+  cast      = { "Cast", "Shows while activating an ability with a cast time.", LL_CAST },
+  channel   = { "Channel", "Shows while activating a channeled ability.", LL_CAST },
+  hover     = { "Hover", "Shows while hovering your pointer over an icon in your action bars.", LL_GLOW },
+  selected  = { "Selected", "Displays when a button is toggled on (a stance, form or aura).", LL_GLOW },
+  flash     = { "Flash", "Appears when auto-attack or auto-shot is active — typically needs the related auto-attack ability to be on the action bar. Not commonly seen.", LL_GLOW },
+  cooldown  = { "Cooldown", "A swipe animation and finish flash to indicate that an ability is recharging or ready.",
+                linkList({ "Cooldown & Availability", { "Text", "countdown numbers" } }) },
+  unusable  = { "Unusable", "Indicates an ability is unusable due to wrong talent, form/stance, weapon type, silenced, missing resource, etc.", LL_CDA },
+  oom       = { "Out of Mana", "Indicates you have insufficient mana or other resource/power to cast.", LL_CDA },
+  range     = { "Out of Range", "Shows when the target is too far for the ability to be cast. Tints the icon and recolors the keybind text (if shown).",
+                linkList({ { "Cooldown & Availability", "enable & style" } }) },
 }
 -- Set the caption trio: a STATE_DESC entry, or nil → the default explainer only.
 local function setCaption(entry)
@@ -339,6 +246,7 @@ function C:ToggleSection(s)
   local opening = not wasOpen
   if opening then s.open = true; if s.refresh then s.refresh() end end   -- reflect current state on open
   relayout()
+  if not opening and contentScroll then contentScroll:SetVerticalScroll(0) end   -- nothing open → every header shows
   -- Surface as much of a freshly-opened section as possible: scroll its header
   -- NEAR the top of the pane, leaving just ONE collapsed header visible above it
   -- (the owner) so the opened content fills the view. Deferred a frame so the scroll
@@ -375,24 +283,17 @@ end
 local function makeSection(title, build)
   local s = { title = title, open = false }
 
-  local header = CreateFrame("Button", nil, bodyContainer)
+  -- The kit's header (stage 3): a violet triangle + Play Bold 14 violet title at
+  -- x=21 of the content pane (the mock's 271 − the rail's 250).
+  local header = CreateFrame("Frame", nil, bodyContainer)
   header:SetHeight(SECTION_HDR_H)
-  local hover = header:CreateTexture(nil, "BACKGROUND"); hover:SetAllPoints(); hover:SetColorTexture(1, 1, 1, 0.05); hover:Hide()
-  header:SetScript("OnEnter", function() hover:Show() end)
-  header:SetScript("OnLeave", function() hover:Hide() end)
-  local caret = header:CreateTexture(nil, "ARTWORK"); caret:SetTexture(CARET_TEX)
-  caret:SetVertexColor(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b)
-  caret:SetSize(9, 9); caret:SetPoint("LEFT", 18, 0)
-  local h = newText(header, FONT.head, 16, COLOR.purple, "LEFT")
-  h:SetPoint("LEFT", caret, "RIGHT", 11, -1); h:SetText(title:upper())
-  local div = header:CreateTexture(nil, "ARTWORK"); div:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  div:SetHeight(1); div:SetPoint("BOTTOMLEFT", 0, 0); div:SetPoint("BOTTOMRIGHT", 0, 0)
+  header.button = UI.sectionHeader(header, title, { onToggle = function() C:ToggleSection(s) end })
+  header.button:SetPoint("TOPLEFT", 21, 0)
 
   local bodyFrame = CreateFrame("Frame", nil, bodyContainer)
-  bodyFrame:SetHeight(10)
+  bodyFrame:SetHeight(10); bodyFrame.isBody = true
 
-  s.header, s.caret, s.bodyFrame = header, caret, bodyFrame
-  header:SetScript("OnClick", function() C:ToggleSection(s) end)
+  s.header, s.bodyFrame = header, bodyFrame
   if build then build(bodyFrame, s) end
   sections[#sections + 1] = s
   return s
@@ -508,14 +409,6 @@ local function openQuickKeybind()
   styleQuickKeybind()
 end
 
--- Placeholder body for sections not yet wired (increment 1).
-local function stubBody(bf)
-  local t = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  t:SetPoint("TOPLEFT", 18, -12)
-  t:SetText("Controls for this section land in the next pass.")
-  bf:SetHeight(38)
-end
-
 -- Shape & icon — the 21 preset silhouettes as a grouped thumbnail grid, plus a
 -- uniform size scale, icon zoom, and crop-to-fill. The shaped-glow pivot (session
 -- 8, docs/SHAPE-CATALOG.md) retired free width/height + the SDF corner presets: the
@@ -524,49 +417,54 @@ end
 -- (persists + applies live); Size → Skin:SetSizeScale. Each thumbnail draws the
 -- shape's own <key>-base.png (white on transparent), tinted grey / purple-selected.
 local function buildShapeSection(bf, s)
-  local CELL, GAP, COLS, ROWGAP = 46, 6, 7, 8
-  local thumbs = {}   -- shape key → thumbnail button (for the selection refresh)
+  -- ★ STAGE 3 (2026-09-21): the Shape & Icon mock (`651:2528`), body-relative.
+  local thumbs = {}   -- shape key → tile (for the selection refresh)
 
-  -- One shape thumbnail: the silhouette's own -base.png (white on transparent),
-  -- fit to the shape's aspect inside the cell, tinted grey (purple when selected,
-  -- brightening on hover). Clicking sets the persistent hand shape live.
+  -- Size in % · Icon Zoom · Crop to Fill on the first row
+  local sizeDial = UI.dial(bf, { label = "Size in %", min = 50, max = 200, step = 5, unit = "%",
+    get = function() return math.floor(((GB.db and GB.db.sizeScale) or 1) * 100 + 0.5) end,
+    set = function(v) v = v / 100; if GB.Skin then GB.Skin:SetSizeScale(v) else GB.db.sizeScale = v end; C:RefreshPreview() end })
+  sizeDial:SetPoint("TOPLEFT", 50, 0)
+  attachTip(sizeDial.strip, "Size", "Scales every icon together, as a percentage of the Edit Mode button size. The clickable hit area stays Edit Mode's.")
+  local zoomDial = UI.dial(bf, { label = "Icon Zoom", min = 0, max = 30, unit = "%",
+    get = function() return math.floor(((GB.db and GB.db.zoom) or 0) * 100 + 0.5) end,
+    set = function(v) v = v / 100; if GB.Skin then GB.Skin:SetZoom(v) end; C:PreviewZoom(v) end })
+  zoomDial:SetPoint("TOPLEFT", 274, 0)
+  attachTip(zoomDial.strip, "Icon zoom", "Crops into the icon art from every side, hiding Blizzard's baked-in border.")
+  local fillLbl = UI.label(bf, "Crop to Fill"); fillLbl:SetPoint("TOPLEFT", 498, 0)
+  local fillTog = UI.toggleBar(bf,
+    function() return not (GB.db and GB.db.iconFill == "stretch") end,
+    function(v)
+      if GB.Skin then GB.Skin:SetIconFill(v and "fill" or "stretch") else GB.db.iconFill = v and "fill" or "stretch" end
+      C:RefreshPreview()
+    end)
+  fillTog:SetPoint("TOPLEFT", 498, -18)
+  attachTip(fillTog, "Crop to fill", "On: a non-square shape crops the icon art to fill it. Off: the art is stretched to the shape.")
+
+  -- One tile: a 64px dim plate with the silhouette's own -base.png (white on
+  -- transparent) fit to its aspect in a 48px box; violet plate when selected.
+  local CELL, PITCH = 64, 74
   local function makeThumb(key)
     local info = GB.HAND_SHAPES[key] or GB.HAND_SHAPES.circle
     local b = CreateFrame("Button", nil, bf)
     b:SetSize(CELL, CELL)
-    local bg = b:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints(); bg:SetColorTexture(1, 1, 1, 0.04)
-    -- silhouette fit-to-aspect inside a padded box (portrait taller, landscape wider)
-    local box = CELL - 12
+    local bg = UI.roundFill(b, "BACKGROUND"); UI.tint(bg, COLOR.dim)
+    local box = 48
     local w, h = box, box
     if info.orient == "portrait" then w = box / info.aspect
     elseif info.orient == "landscape" then h = box / info.aspect end
     local tex = b:CreateTexture(nil, "ARTWORK")
     tex:SetSize(w, h); tex:SetPoint("CENTER"); tex:SetTexture(GB:HandAsset(key, "base"))
-    -- purple selection edges (hidden until active)
-    local edges = {}
-    local function edge(p1, p2, vertical)
-      local e = b:CreateTexture(nil, "OVERLAY")
-      e:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 1)
-      e:SetPoint(p1); e:SetPoint(p2)
-      if vertical then e:SetWidth(2) else e:SetHeight(2) end
-      e:Hide(); edges[#edges + 1] = e
-    end
-    edge("TOPLEFT", "TOPRIGHT"); edge("BOTTOMLEFT", "BOTTOMRIGHT")
-    edge("TOPLEFT", "BOTTOMLEFT", true); edge("TOPRIGHT", "BOTTOMRIGHT", true)
     function b:SetSelected(on)
       self._sel = on and true or false
-      tex:SetVertexColor(on and COLOR.purple.r or 0.62, on and COLOR.purple.g or 0.64, on and COLOR.purple.b or 0.70)
-      bg:SetColorTexture(1, 1, 1, on and 0.10 or 0.04)
-      for _, e in ipairs(edges) do e:SetShown(on) end
+      if on then UI.tint(bg, COLOR.violet) else UI.tint(bg, COLOR.dim) end
     end
     b:SetScript("OnEnter", function(self)
-      if not self._sel then tex:SetVertexColor(0.88, 0.90, 0.95) end
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(info.label, 1, 1, 1)
-      GameTooltip:Show()
+      if not self._sel then UI.tint(bg, COLOR.dim, 0.7) end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(info.label, 1, 1, 1); GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function(self)
-      if not self._sel then tex:SetVertexColor(0.62, 0.64, 0.70) end
+      if not self._sel then UI.tint(bg, COLOR.dim) end
       GameTooltip:Hide()
     end)
     b:SetScript("OnClick", function()
@@ -577,66 +475,30 @@ local function buildShapeSection(bf, s)
     return b
   end
 
-  -- Lay the groups out top-to-bottom: a muted group title, then a wrapping grid.
-  -- yCursor tracks the running vertical position (0 at the section top, negative down).
-  local yCursor = -12
-  local function groupTitle(text)
-    local t = newText(bf, FONT.label, 10, MUTE, "LEFT")
-    t:SetPoint("TOPLEFT", 18, yCursor); t:SetText(text:upper())
-    yCursor = yCursor - 16
-  end
-  local function grid(keys)
-    for i, key in ipairs(keys) do
-      local col, rowIdx = (i - 1) % COLS, math.floor((i - 1) / COLS)
+  -- The groups at the mock's rows: title at y, tiles 20 under it, one row each
+  -- (the catalog's groups fit one row; a longer group wraps at 13).
+  local y = 65
+  for _, g in ipairs(GB.HAND_GROUPS) do
+    local t = UI.label(bf, g.title); t:SetPoint("TOPLEFT", 50, -y)
+    local rows = 1
+    for i, key in ipairs(g.keys) do
+      local col, row = (i - 1) % 13, math.floor((i - 1) / 13)
+      rows = math.max(rows, row + 1)
       local th = makeThumb(key); thumbs[key] = th
-      th:SetPoint("TOPLEFT", 18 + col * (CELL + GAP), yCursor - rowIdx * (CELL + ROWGAP))
+      th:SetPoint("TOPLEFT", 50 + col * PITCH, -(y + 20 + row * PITCH))
     end
-    local rows = math.max(1, math.ceil(#keys / COLS))
-    yCursor = yCursor - rows * CELL - (rows - 1) * ROWGAP - 14
+    y = y + 20 + rows * PITCH + 16
   end
-  for _, g in ipairs(GB.HAND_GROUPS) do groupTitle(g.title); grid(g.keys) end
-
-  -- Uniform size scale (× the Edit-Mode button size) — replaces free width/height.
-  local sizeRow = sliderRow(bf, yCursor, "Size", 0.5, 2.0, 0.05,
-    function() return GB.db and GB.db.sizeScale end,
-    function(v) if GB.Skin then GB.Skin:SetSizeScale(v) else GB.db.sizeScale = v end; C:RefreshPreview() end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-  yCursor = yCursor - 34
-
-  -- Icon zoom (live SetTexCoord) + crop-to-fill (kept from the old section).
-  local zoomRow = sliderRow(bf, yCursor, "Icon zoom", 0, 0.30, 0.01,
-    function() return GB.db and GB.db.zoom end,
-    function(v) if GB.Skin then GB.Skin:SetZoom(v) end; C:PreviewZoom(v) end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-  yCursor = yCursor - 34
-
-  local fillLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); fillLbl:SetPoint("TOPLEFT", 18, yCursor); fillLbl:SetText("Crop to fill")
-  local fillTog = makeToggle(bf,
-    function() return not (GB.db and GB.db.iconFill == "stretch") end,
-    function(v)
-      if GB.Skin then GB.Skin:SetIconFill(v and "fill" or "stretch") else GB.db.iconFill = v and "fill" or "stretch" end
-      C:RefreshPreview()
-    end)
-  fillTog:SetPoint("TOPRIGHT", -18, yCursor + 2)
-  yCursor = yCursor - 26
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, yCursor); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Pick a silhouette; Size scales every icon together. The clickable hit area stays Edit Mode's.")
-  yCursor = yCursor - 40
-
-  bf:SetHeight(-yCursor + 8)
+  bf:SetHeight(y - 16)
 
   s.refresh = function()
     local active = GB.db and GB.db.handShape
     for key, th in pairs(thumbs) do th:SetSelected(key == active) end
-    sizeRow:refresh(); zoomRow:refresh(); fillTog:refresh()
+    sizeDial:refresh(); zoomDial:refresh(); fillTog:refresh()
     relayout()
   end
 end
 
--- The active style's first gradient layer (the "plate" fill), creating one if
--- the style has none. Edits go straight into GB.db.styleData (a saved document).
 local function gradLayer()
   local st = GB.db and GB.db.styleData
   if not (st and st.layers) then return nil end
@@ -734,852 +596,392 @@ end
 -- Plate — the 2:1-shape "plate" look: a SQUARE icon fills one half, a solid-colour plate
 -- fills the other, and that colour fades up over the icon. Only meaningful on a 2:1
 -- portrait shape (its halves are two squares); greyed with a hint on any other shape.
-local function buildPlateSection(bf, s)
-  local function on() local p = plateData(); return p and p.enabled and true or false end
-  local function curSide() return (plateData() and plateData().iconSide) or "top" end
+-- Kit cell shorthands (stage 3): a labelled 35px cell around a kit control.
+local function toggleCell(parent, labelText, get, set) return UI.cell(parent, labelText, function(c) return UI.toggleBar(c, get, set) end) end
+local function segCell(parent, labelText, options, get, set, opts) return UI.cell(parent, labelText, function(c) return UI.segments(c, options, get, set, opts) end) end
+local function chipCell(parent, labelText, opts) return UI.cell(parent, labelText, function(c) return UI.chip(c, opts) end) end
+local function pickCell(parent, labelText, w, getLabel, getOptions, getCurrent, onPick) return UI.cell(parent, labelText, function(c) return UI.pick(c, w, getLabel, getOptions, getCurrent, onPick) end) end
+local function at(wd, x, y) wd:SetPoint("TOPLEFT", x, -y); return wd end
 
-  local enLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); enLbl:SetPoint("TOPLEFT", 18, -14); enLbl:SetText("Plate")
-  local enTog = makeToggle(bf, on, function(v)
+local function buildPlateSection(bf, s)
+  -- ★ STAGE 3 (2026-09-21): the Plate Construction mock (`651:2755`), body-relative.
+  local function on() local p = plateData(); return p and p.enabled and true or false end
+  local w = {}
+  w.on = at(toggleCell(bf, "Plate Construction", on, function(v)
     local p = ensurePlate(); if p then p.enabled = v and true or false end
     if GB.Skin then GB.Skin:RefreshPlate() end
     C:RefreshPreview(); s.refresh()
-  end)
-  enTog:SetPoint("TOPRIGHT", -18, -12)
-
-  -- Icon side: which half the square icon fills (the plate fills the other).
-  local sideLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); sideLbl:SetPoint("TOPLEFT", 18, -46); sideLbl:SetText("Icon side")
-  local sideBtns, prev = {}, nil
-  local function setSide(v)
-    local p = ensurePlate(); if p then p.iconSide = v end
-    for _, e in ipairs(sideBtns) do e.b:SetActive(e.v == v) end
-    if GB.Skin then GB.Skin:RefreshPlate() end
-    C:RefreshPreview()
-  end
-  for _, opt in ipairs({ { "bottom", "Bottom" }, { "top", "Top" } }) do   -- reverse → Top ends up leftmost
-    local b = flatButton(bf, 52, 20, COLOR.heroic, opt[2], 11)
-    if prev then b:SetPoint("TOPRIGHT", prev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -45) end
-    b:SetScript("OnClick", function() setSide(opt[1]) end)
-    sideBtns[#sideBtns + 1] = { b = b, v = opt[1] }; prev = b
-  end
-
-  local colLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); colLbl:SetPoint("TOPLEFT", 18, -78); colLbl:SetText("Plate color")
-  local cs = colorSwatch(bf, function() local p = plateData(); return p and p.color end,
-    function(c) local p = ensurePlate(); if p then p.color = c end; local l = gradLayer(); if l then l.color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    nil, "Plate color")
-  cs.swatch:SetPoint("TOPRIGHT", -18, -77)
-
+  end), 50, 0)
+  attachTip(w.on.control, "Plate construction", "Square icon in one half of a 2:1 shape, a solid plate with a colour fade in the other.")
+  -- Icon alignment: which half the square icon fills (the plate fills the other).
+  w.side = at(segCell(bf, "Icon Alignment", { { value = "top", label = "Top" }, { value = "bottom", label = "Bottom" } },
+    function() return (plateData() and plateData().iconSide) or "top" end,
+    function(v)
+      local p = ensurePlate(); if p then p.iconSide = v end
+      if GB.Skin then GB.Skin:RefreshPlate() end
+      C:RefreshPreview()
+    end), 213, 0)
+  w.color = at(chipCell(bf, "Plate Color", {
+    get = function() local p = plateData(); return p and p.color end,
+    set = function(c) local p = ensurePlate(); if p then p.color = c end; local l = gradLayer(); if l then l.color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
+    optional = true, label = "Bars › Plate color", title = "Plate Color" }), 399, 0)
   -- Fade start: how far the plate colour bleeds up over the icon. Kept in sync with the
   -- Decoration Layers gradient fade (bleedPct) when a gradient layer exists.
-  local fadeRow = sliderRow(bf, -104, "Fade start", 0, 1, 0.05,
-    function() local p = plateData(); return (p and p.fadeStart) or 0.5 end,
-    function(v)
+  w.fade = at(UI.dial(bf, { label = "Fade Start", min = 0, max = 100, step = 5, unit = "%",
+    get = function() local p = plateData(); return math.floor(((p and p.fadeStart) or 0.5) * 100 + 0.5) end,
+    set = function(v)
+      v = v / 100
       local p = ensurePlate(); if p then p.fadeStart = v end
       local l = gradLayer(); if l then l.bleedPct = v end
       if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview()
-    end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-
+    end }), 503, 0)
+  attachTip(w.fade.strip, "Fade start", "How far up the icon the plate colour bleeds before it fades out.")
   -- Dim on cooldown: the plate colour darkens while the action's REAL (non-GCD)
   -- cooldown runs — the icon half already darkens under the sweep; this carries
   -- the "on cooldown" read across the plate half. Engine: Skin's dim proxy.
-  local dimLbl = newText(bf, FONT.body, 12, TEXT, "LEFT"); dimLbl:SetPoint("TOPLEFT", 18, -152); dimLbl:SetText("Dim on cooldown")
-  local dimTog = makeToggle(bf,
+  w.dim = at(toggleCell(bf, "Dim on Cooldown",
     function() local p = plateData(); return p and p.dimCD and true or false end,
     function(v)
       local p = ensurePlate(); if p then p.dimCD = v and true or false end
       if GB.Skin and GB.Skin.RefreshPlateDim then GB.Skin:RefreshPlateDim() end
-    end)
-  dimTog:SetPoint("TOPRIGHT", -18, -150)
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -184); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  bf:SetHeight(214)
+    end), 50, 55)
+  local note = newText(bf, FONT.ui, 11, COLOR.ink, "LEFT")
+  note:SetPoint("TOPLEFT", 213, -71); note:SetWidth(560); note:SetJustifyH("LEFT")
+  note:SetText("Note: Plate Construction needs a 2:1 aspect ratio. Pick |cff000000Pill 2:1|r, |cff000000Tall Square 2:1|r, or a |cff000000Tall Rounded 2:1|r in Shape & Icon.")
+  bf:SetHeight(100)
   s.refresh = function()
     local ok = plateShapeOK()
-    enTog:EnableMouse(ok); enTog:SetAlpha(ok and 1 or 0.35); enTog:refresh()
+    w.on:refresh(); w.on:setEnabled(ok)
     local live = ok and on()
-    sideLbl:SetAlpha(live and 1 or 0.4)
-    for _, e in ipairs(sideBtns) do e.b:SetActive(e.v == curSide()); e.b:SetEnabled(live) end
-    colLbl:SetAlpha(live and 1 or 0.4)
-    cs.swatch:SetEnabled(live); cs.swatch:SetAlpha(live and 1 or 0.4); cs:refresh()
-    fadeRow:setEnabled(live); fadeRow:refresh()
-    dimLbl:SetAlpha(live and 1 or 0.4)
-    dimTog:EnableMouse(live); dimTog:SetAlpha(live and 1 or 0.35); dimTog:refresh()
-    hint:SetText(ok
-      and "Square icon in one half, solid plate + colour-fade in the other. Side picks which half."
-      or "Plate needs a 2:1 shape — pick Pill 2:1, Tall square 2:1, or a Tall rounded ·2:1 in Shape & icon.")
+    for _, c in ipairs({ w.side, w.color, w.fade, w.dim }) do c:refresh(); c:setEnabled(live) end
+    note:SetAlpha(ok and 0.5 or 1)
   end
 end
 
 -- Decoration — the gradient plate that fills the extension and fades up into the
 -- icon. One layer for now (color + fade + on/off); multiple layers come later.
+local DIR_OPTS = { { value = "up", label = "Up" }, { value = "down", label = "Down" }, { value = "left", label = "Left" }, { value = "right", label = "Right" } }
+
 local function buildDecorSection(bf, s)
-  local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 18, -14); lab:SetText("Gradient fill")
-  local en = makeToggle(bf,
+  -- ★ STAGE 3 (2026-09-21): the Decoration Layers mock (`651:3020`), body-relative.
+  local w = {}
+  local function decor() if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end
+
+  -- ROW 0: the gradient fill
+  w.grad = at(toggleCell(bf, "Gradient Fade",
     function() local l = gradLayer(); return l and l.enabled ~= false end,
-    function(v) local l = ensureGradLayer(); l.enabled = v; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
-  en:SetPoint("TOPRIGHT", -18, -12)
-
-  local clab = newText(bf, FONT.body, 12, TEXT, "LEFT"); clab:SetPoint("TOPLEFT", 18, -46); clab:SetText("Color")
-  local cs = colorSwatch(bf,
-    function() local l = gradLayer(); return l and l.color end,
-    function(c) local l = ensureGradLayer(); l.color = c; if plateData() then plateData().color = c end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    nil, "Gradient fill color")
-  cs.swatch:SetPoint("TOPRIGHT", -18, -44)
-
-  local bleedRow = sliderRow(bf, -78, "Fade start", 0, 1, 0.05,
-    function() local l = gradLayer(); return (l and l.bleedPct) or 0.5 end,
-    function(v) local l = ensureGradLayer(); l.bleedPct = v; if plateData() then plateData().fadeStart = v end; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-
-  -- Direction — which edge the fill is solid at and which way it fades. Works on
-  -- every shape (incl. hexagon); "Fade start" sets how far the fade reaches.
-  local dirR = dirRow(bf, -128, "Direction",
+    function(v) local l = ensureGradLayer(); l.enabled = v; decor(); s.refresh() end), 50, 0)
+  w.gradColor = at(chipCell(bf, "Gradient", {
+    get = function() local l = gradLayer(); return l and l.color end,
+    set = function(c) local l = ensureGradLayer(); l.color = c; if plateData() then plateData().color = c end; decor() end,
+    optional = true, label = "Bars › Gradient fill color", title = "Gradient Color" }), 196, 0)
+  w.fade = at(UI.dial(bf, { label = "Fade Start", min = 0, max = 100, step = 5, unit = "%",
+    get = function() local l = gradLayer(); return math.floor(((l and l.bleedPct) or 0.5) * 100 + 0.5) end,
+    set = function(v) v = v / 100; local l = ensureGradLayer(); l.bleedPct = v; if plateData() then plateData().fadeStart = v end; decor() end }), 284, 0)
+  attachTip(w.fade.strip, "Fade start", "How far across the icon the colour reaches before it fades out; Fade Direction sets the solid edge.")
+  w.fadeDir = at(segCell(bf, "Fade Direction", DIR_OPTS,
     function() local l = gradLayer(); return (l and l.dir) or "up" end,
-    function(d) local l = ensureGradLayer(); l.dir = d; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
+    function(d) local l = ensureGradLayer(); l.dir = d; decor() end, { padX = 8 }), 576, 0)   -- the mock's 185px four-way bar
 
-  -- Border — a colored frame around ANY shape (a shape-copy behind the icon,
-  -- peeking out by the thickness). On/off + color(s) + thickness + opacity.
-  local blab = newText(bf, FONT.head, 13, COLOR.purple, "LEFT"); blab:SetPoint("TOPLEFT", 18, -168); blab:SetText("BORDER")
-  local ben = makeToggle(bf,
-    function() local b = borderData(); return b and b.enabled end,
-    function(v) local b = ensureBorder(); b.enabled = v; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
-  ben:SetPoint("TOPRIGHT", -18, -166)
-
-  local bclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); bclab:SetPoint("TOPLEFT", 18, -198); bclab:SetText("Color")
-  local bcs = colorSwatch(bf,
-    function() local b = borderData(); return b and b.color end,
-    function(c) local b = ensureBorder(); b.color = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    true, "Border color")
-  bcs.swatch:SetPoint("TOPRIGHT", -18, -196)
-
-  -- Two-tone: a second colour turns the border into a gradient (only the rim
-  -- shows → a colour transition around the frame). Off clears color2.
-  local twoLab = newText(bf, FONT.body, 12, TEXT, "LEFT"); twoLab:SetPoint("TOPLEFT", 18, -228); twoLab:SetText("Two-tone")
-  local twoTog = makeToggle(bf,
-    function() local b = borderData(); return b and b.color2 ~= nil end,
+  -- ROW 1: the border
+  w.border = at(toggleCell(bf, "Icon Border",
+    function() local b2 = borderData(); return b2 and b2.enabled end,
+    function(v) local b2 = ensureBorder(); b2.enabled = v; decor(); s.refresh() end), 50, 65)
+  w.borderColor = at(chipCell(bf, "Border Color", {
+    get = function() local b2 = borderData(); return b2 and b2.color end,
+    set = function(c) local b2 = ensureBorder(); b2.color = c; decor() end,
+    hasAlpha = true, optional = true, label = "Bars › Border color", title = "Border Color" }), 196, 65)
+  -- Off keeps the second colour (twoTone = false), so On brings it back
+  -- unchanged (the owner, 2026-09-21: wiping it "is bad").
+  local function twoOn() local b2 = borderData(); return b2 and b2.color2 ~= nil and b2.twoTone ~= false end
+  w.two = at(toggleCell(bf, "Two-Tone Border", twoOn,
     function(v)
-      local b = ensureBorder()
-      b.color2 = v and (b.color2 or { 1, 1, 1 }) or nil
-      if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview(); s.refresh()
-    end)
-  twoTog:SetPoint("TOPRIGHT", -18, -226)
+      local b2 = ensureBorder()
+      if v then b2.color2 = b2.color2 or { 1, 1, 1 }; b2.twoTone = nil else b2.twoTone = false end
+      decor(); s.refresh()
+    end), 309, 65)
+  attachTip(w.two.control, "Two-tone border", "Makes the border a gradient between its colour and the second colour, along the blend direction.")
+  w.color2 = at(chipCell(bf, "Second Color", {
+    get = function() local b2 = borderData(); return b2 and b2.color2 end,
+    set = function(c) local b2 = ensureBorder(); b2.color2 = c; decor() end,
+    hasAlpha = true, label = "Bars › Border color 2", title = "Second Border Color" }), 455, 65)
+  w.blendDir = at(segCell(bf, "Blend Direction", DIR_OPTS,
+    function() local b2 = borderData(); return (b2 and b2.gradDir) or "up" end,
+    function(d) local b2 = ensureBorder(); b2.gradDir = d; decor() end, { padX = 8 }), 576, 65)
 
-  local bc2lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); bc2lab:SetPoint("TOPLEFT", 18, -258); bc2lab:SetText("Color 2")
-  local bcs2 = colorSwatch(bf,
-    function() local b = borderData(); return b and b.color2 end,
-    function(c) local b = ensureBorder(); b.color2 = c; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    true, "Border color 2")
-  bcs2.swatch:SetPoint("TOPRIGHT", -18, -256)
+  -- ROW 2: thickness · opacity
+  w.thick = at(UI.dial(bf, { label = "Thickness", min = 1, max = 12, unit = "px",
+    get = function() local b2 = borderData(); return (b2 and b2.thickness) or 3 end,
+    set = function(v) local b2 = ensureBorder(); b2.thickness = v; decor() end }), 50, 129)
+  w.alpha = at(UI.dial(bf, { label = "Opacity %", min = 0, max = 100, step = 5, unit = "%",
+    get = function() local b2 = borderData(); return math.floor(((b2 and b2.alpha) or 1) * 100 + 0.5) end,
+    set = function(v) local b2 = ensureBorder(); b2.alpha = v / 100; decor() end }), 276, 129)
 
-  local bdirR = dirRow(bf, -288, "Blend dir",
-    function() local b = borderData(); return (b and b.gradDir) or "up" end,
-    function(d) local b = ensureBorder(); b.gradDir = d; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end)
+  -- ROW 3: the icon tint
+  w.tintMode = at(segCell(bf, "Colorize Icon", { { value = "off", label = "Off" }, { value = "wash", label = "Wash" }, { value = "tint", label = "Tint" } },
+    function() return (GB.db and GB.db.iconTintMode) or "off" end,
+    function(m) if GB.Skin then GB.Skin:SetIconTintMode(m) end; s.refresh(); C:SetPreviewState("idle") end, { padX = 10 }), 50, 194)   -- idle so the tint is visible undimmed; the mock's 136px bar
+  attachTip(w.tintMode.control, "Colorize icon", "Colours the normal state only, so out-of-range, out-of-mana and unusable still show through. Wash gives one clean colour but makes icons harder to tell apart; Tint keeps the art and adds a cast (pale colours work best).")
+  w.tintColor = at(chipCell(bf, "Tint Color", {
+    get = function() return GB.db and GB.db.iconTintColor end,
+    set = function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end,
+    optional = true, label = "Bars › Icon tint", title = "Tint Color" }), 216, 194)
+  w.tintStr = at(UI.dial(bf, { label = "Tint Strength", min = 0, max = 100, step = 5, unit = "%",
+    get = function() local v = GB.db and GB.db.iconTintStrength; return math.floor((v == nil and 1 or v) * 100 + 0.5) end,
+    set = function(v) if GB.Skin then GB.Skin:SetIconTintStrength(v / 100) end; C:SetPreviewState("idle") end }), 310, 194)
 
-  local thickRow = sliderRow(bf, -328, "Thickness", 1, 12, 1,
-    function() local b = borderData(); return (b and b.thickness) or 3 end,
-    function(v) local b = ensureBorder(); b.thickness = v; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    function(v) return v .. "px" end)
-
-  local bopRow = sliderRow(bf, -372, "Opacity", 0, 1, 0.05,
-    function() local b = borderData(); return (b and b.alpha) or 1 end,
-    function(v) local b = ensureBorder(); b.alpha = v; if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-
-  -- ICON TINT — recolour the icon art itself. Lives here, with the other layers
-  -- you paint ONTO a button, rather than next to the availability tints it shares
-  -- an engine funnel with (the owner, 2026-07-25 — that grouping was the engine's
-  -- logic leaking into the UI). Off / Wash (desaturate, then colour → one clean
-  -- hue) / Tint (colour multiplied over the untouched art → the icon keeps its
-  -- own colours and takes a cast).
-  local itlab = newText(bf, FONT.head, 13, COLOR.purple, "LEFT"); itlab:SetPoint("TOPLEFT", 18, -416); itlab:SetText("ICON TINT")
-  local ittl = newText(bf, FONT.body, 12, TEXT, "LEFT"); ittl:SetPoint("TOPLEFT", 18, -446); ittl:SetText("Tint icons")
-  local itModes, itmPrev = {}, nil
-  for i = 3, 1, -1 do   -- reverse → Off ends up leftmost
-    local mc = ({ { "off", "Off" }, { "wash", "Wash" }, { "tint", "Tint" } })[i]
-    local b = flatButton(bf, 54, 22, COLOR.heroic, mc[2], 11)
-    if itmPrev then b:SetPoint("TOPRIGHT", itmPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -444) end
-    b:SetScript("OnClick", function()
-      if GB.Skin then GB.Skin:SetIconTintMode(mc[1]) end
-      s.refresh(); C:SetPreviewState("idle")   -- idle so the tint is visible undimmed
-    end)
-    itModes[#itModes + 1] = { b = b, m = mc[1] }; itmPrev = b
-  end
-  local itcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); itcl:SetPoint("TOPLEFT", 30, -478); itcl:SetText("Tint color")
-  local itcs = colorSwatch(bf,
-    function() return GB.db and GB.db.iconTintColor end,
-    function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end,
-    nil, "Icon tint")
-  itcs.swatch:SetPoint("TOPRIGHT", -18, -476)
-
-  local itStr = sliderRow(bf, -510, "Strength", 0, 1, 0.05,
-    function() local v = GB.db and GB.db.iconTintStrength; return v == nil and 1 or v end,
-    function(v) if GB.Skin then GB.Skin:SetIconTintStrength(v) end; C:SetPreviewState("idle") end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -556); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Direction sets the solid edge; Fade start its reach. Two-tone makes the border a gradient. Icon tint colors the normal state only, so out-of-range, out-of-mana and unusable still show through — Wash gives one clean color but makes icons harder to tell apart, Tint keeps the art and adds a cast (pale colors work best). Strength 0% leaves icons untouched in either mode.")
-  bf:SetHeight(628)
+  bf:SetHeight(235)
   s.refresh = function()
-    en:refresh(); cs:refresh(); bleedRow:refresh(); dirR:refresh()
-    ben:refresh(); bcs:refresh(); twoTog:refresh(); bcs2:refresh(); bdirR:refresh(); thickRow:refresh(); bopRow:refresh()
-    -- Grey Color 2 + Blend dir unless two-tone is on.
-    local two = (function() local b = borderData(); return b and b.color2 ~= nil end)()
-    bc2lab:SetAlpha(two and 1 or 0.35)
-    bcs2.swatch:EnableMouse(two); bcs2.swatch:SetAlpha(two and 1 or 0.35)
-    bdirR:setEnabled(two)
-    -- Icon tint: light the active mode, grey the colour swatch when off.
-    local tintMode = (GB.db and GB.db.iconTintMode) or "off"
-    for _, e in ipairs(itModes) do e.b:SetActive(e.m == tintMode) end
-    local tintOn = tintMode ~= "off"
-    itcl:SetAlpha(tintOn and 1 or 0.35); itcs.swatch:EnableMouse(tintOn and true or false); itcs.swatch:SetAlpha(tintOn and 1 or 0.35)
-    itcs:refresh(); itStr:refresh(); itStr:setEnabled(tintOn)
+    for _, c in pairs(w) do c:refresh() end
+    local gradOn = (function() local l = gradLayer(); return l and l.enabled ~= false end)()
+    w.gradColor:setEnabled(gradOn); w.fade:setEnabled(gradOn); w.fadeDir:setEnabled(gradOn)
+    local bOn = (function() local b2 = borderData(); return b2 and b2.enabled and true or false end)()
+    local two = bOn and twoOn()
+    w.borderColor:setEnabled(bOn); w.two:setEnabled(bOn); w.thick:setEnabled(bOn); w.alpha:setEnabled(bOn)
+    w.color2:setEnabled(two and true or false); w.blendDir:setEnabled(two and true or false)
+    local tintOn = ((GB.db and GB.db.iconTintMode) or "off") ~= "off"
+    w.tintColor:setEnabled(tintOn); w.tintStr:setEnabled(tintOn)
   end
 end
 
--- Text — ONE home for every text element (the owner, session 12: keybind / charge
--- count / countdown styling were scattered over three sections). A chip row picks
--- the element (the Animations-section pattern); each element's block shows below,
--- and the section resizes to the selected block (bf:SetHeight + relayout).
--- Engines: ApplyHotkeyOverride (styleData.hotkey, UpdateHotkeys re-assert),
--- ApplyCountOverride (styleData.count), styleCooldownText (styleData.cdtext).
--- OUTLINE & SHADOW group (session 14) — one identical block for every Text
--- element. Outline = WoW's font flag (None / Outline / Thick); Shadow = the
--- separate FontString shadow property the engine now owns (toggle + colour with
--- opacity + X/Y offset). `defOn` mirrors the engine's legacy default when the
--- element has no saved shadow yet (Blizzard bakes one on name/countdown, not
--- keybind/count). `onFn` = whether the element's styling is active (greying).
--- Occupies 216px from `y`; returns { refresh(on) }.
-local function textStyleGroup(parent, y, dataFn, ensureFn, applyFn, defOn, onFn)
-  local g = {}
-  local hdr = newText(parent, FONT.head, 13, COLOR.purple, "LEFT"); hdr:SetPoint("TOPLEFT", 18, y); hdr:SetText("OUTLINE & SHADOW")
+-- ★ STAGE 3 (2026-09-21): the Text mock (`651:3493`), body-relative. One block
+-- per text (Keybind · Charge Count · Countdown · Name) behind a four-way bar;
+-- every block is the same layout with the kind's own first cell (the enable
+-- toggle, or Name's DEFAULT | CUSTOM | HIDDEN), its own Zone choices (none
+-- for Countdown) and Keybind's Mac Symbol Icons.
+local function textBlock(bf, k)
+  local f = CreateFrame("Frame", nil, bf)
+  f:SetPoint("TOPLEFT", 0, -37); f:SetPoint("TOPRIGHT", 0, -37); f:SetHeight(230)
+  f:Hide()
+  local data, ensure, apply, on = k.data, k.ensure, k.apply, k.on
+  local w = {}
+  local function num(field, default) return function() local c = data(); return (c and c[field]) or default end end
+  local function setNum(field) return function(v) local c = ensure(); if c then c[field] = v end; apply() end end
 
-  local olab = newText(parent, FONT.body, 12, TEXT, "LEFT"); olab:SetPoint("TOPLEFT", 18, y - 30); olab:SetText("Outline")
-  local obtns, oPrev = {}, nil
-  for i = 3, 1, -1 do   -- reverse → None ends up leftmost
-    local oc = ({ { "", "None" }, { "OUTLINE", "Outline" }, { "THICKOUTLINE", "Thick" } })[i]
-    local b = flatButton(parent, 60, 22, COLOR.heroic, oc[2], 11)
-    if oPrev then b:SetPoint("TOPRIGHT", oPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, y - 28) end
-    b:SetScript("OnClick", function()
-      local c = ensureFn(); if not c then return end
-      c.flags = oc[1]
-      for _, e in ipairs(obtns) do e.b:SetActive(e.f == c.flags) end
-      applyFn()
-    end)
-    obtns[#obtns + 1] = { b = b, f = oc[1] }; oPrev = b
+  w.head = at(k.head(f), 50, 0)
+  w.color = at(chipCell(f, "Color", {
+    get = function() local c = data(); return c and c.color end,
+    set = function(col) local c = ensure(); if c then c.color = col end; apply() end,
+    optional = true, label = "Bars › " .. k.title .. " color", title = k.title .. " Color" }), 196, 0)
+  w.font = at(pickCell(f, "Font", 180,
+    function() local c = data(); local n = c and c.font; return (n and n ~= "") and n or "Default" end,
+    function() local o = { { label = "Default", value = "" } }; for _, n in ipairs(fontChoices()) do o[#o + 1] = { label = n, value = n } end; return o end,
+    function() local c = data(); return (c and c.font) or "" end,
+    function(v) local c = ensure(); if c then c.font = (v ~= "") and v or nil end; apply() end), 279, 0)
+  w.ox = at(UI.dial(f, { label = "Horizontal Offset", min = -40, max = 40, unit = "px", centre = true, get = num("offsetX", 0), set = setNum("offsetX") }), 502, 0)
+  if k.zones then
+    w.zone = at(segCell(f, "Zone", k.zones, num("zone", k.zoneDefault), setNum("zone")), 50, 55)
+    if k.zoneTip then attachTip(w.zone.control, "Zone", k.zoneTip) end
   end
+  w.size = at(UI.dial(f, { label = "Font Size", min = k.sizeMin or 6, max = k.sizeMax or 28, unit = "px", get = num("size", k.sizeDefault), set = setNum("size") }), 261, 55)
+  w.oy = at(UI.dial(f, { label = "Vertical Offset", min = -40, max = 40, unit = "px", centre = true, get = num("offsetY", 0), set = setNum("offsetY") }), 502, 55)
 
-  local function shadow() local c = dataFn(); return c and c.shadow end
+  -- outline + shadow
+  w.outline = at(segCell(f, "Text Outline", { { value = "", label = "None" }, { value = "OUTLINE", label = "Outline" }, { value = "THICKOUTLINE", label = "Thick" } },
+    function() local c = data(); return (c and c.flags) or "OUTLINE" end,
+    function(v) local c = ensure(); if c then c.flags = v end; apply() end), 50, 139)
+  local function shadow() local c = data(); return c and c.shadow end
   local function shadowOn()
     local sh = shadow()
-    if sh == nil then return defOn end   -- legacy: mirror the engine's fallback
+    if sh == nil then return k.shadowDefault end   -- legacy: mirror the engine's fallback
     return sh.enabled and true or false
   end
   local function ensureShadow()
-    local c = ensureFn(); if not c then return nil end
-    c.shadow = c.shadow or { enabled = defOn, color = { 0, 0, 0, 1 }, x = 1, y = -1 }
+    local c = ensure(); if not c then return nil end
+    c.shadow = c.shadow or { enabled = k.shadowDefault, color = { 0, 0, 0, 1 }, x = 1, y = -1 }
     return c.shadow
   end
+  w.shadow = at(toggleCell(f, "Shadow", shadowOn, function(v) local sh = ensureShadow(); if sh then sh.enabled = v and true or false end; apply(); f.refresh() end), 306, 139)
+  w.shx = at(UI.dial(f, { label = "Shadow Horizontal Offset", min = -8, max = 8, unit = "px", centre = true,
+    get = function() local sh = shadow(); return (sh and sh.x) or 1 end,
+    set = function(v) local sh = ensureShadow(); if sh then sh.x = v end; apply() end }), 452, 139)
+  w.shColor = at(chipCell(f, "Shadow Color", {
+    get = function() local sh = shadow(); return sh and sh.color end,
+    set = function(col) local sh = ensureShadow(); if sh then sh.color = col end; apply() end,
+    hasAlpha = true, optional = true, label = "Bars › " .. k.title .. " shadow color", title = "Shadow Color" }), 306, 194)
+  w.shy = at(UI.dial(f, { label = "Shadow Vertical Offset", min = -8, max = 8, unit = "px", centre = true,
+    get = function() local sh = shadow(); return (sh and sh.y) or -1 end,
+    set = function(v) local sh = ensureShadow(); if sh then sh.y = v end; apply() end }), 452, 194)
+  if k.extra then w.extra = at(k.extra(f), 50, 194) end
 
-  local slab = newText(parent, FONT.body, 12, TEXT, "LEFT"); slab:SetPoint("TOPLEFT", 18, y - 62); slab:SetText("Shadow")
-  local sTog = makeToggle(parent, shadowOn,
-    function(v)
-      local sh = ensureShadow(); if sh then sh.enabled = v and true or false end
-      applyFn(); g.refresh(onFn())
-    end)
-  sTog:SetPoint("TOPRIGHT", -18, y - 60)
-
-  local sclab = newText(parent, FONT.body, 12, TEXT, "LEFT"); sclab:SetPoint("TOPLEFT", 18, y - 94); sclab:SetText("Shadow color")
-  local scs = colorSwatch(parent,
-    function() local sh = shadow(); return sh and sh.color end,
-    function(col) local sh = ensureShadow(); if sh then sh.color = col end; applyFn() end,
-    true, "Shadow color")   -- opacity-enabled — a soft shadow is half the point
-  scs.swatch:SetPoint("TOPRIGHT", -18, y - 92)
-
-  local sxRow = sliderRow(parent, y - 126, "Shadow offset X", -8, 8, 1,
-    function() local sh = shadow(); return (sh and sh.x) or 1 end,
-    function(v) local sh = ensureShadow(); if sh then sh.x = v end; applyFn() end,
-    function(v) return v .. "px" end)
-  local syRow = sliderRow(parent, y - 170, "Shadow offset Y", -8, 8, 1,
-    function() local sh = shadow(); return (sh and sh.y) or -1 end,
-    function(v) local sh = ensureShadow(); if sh then sh.y = v end; applyFn() end,
-    function(v) return v .. "px" end)
-
-  g.refresh = function(on)
-    local c = dataFn()
-    local shOn = on and shadowOn()
-    for _, e in ipairs(obtns) do e.b:SetActive(on and ((c and c.flags) or "OUTLINE") == e.f); e.b:SetEnabled(on) end
-    sTog:refresh(); sTog:SetEnabled(on); sTog:SetAlpha(on and 1 or 0.35)
-    scs:refresh(); scs.swatch:EnableMouse(shOn); scs.swatch:SetAlpha(shOn and 1 or 0.35)
-    sxRow:refresh(); syRow:refresh()
-    sxRow:setEnabled(shOn); syRow:setEnabled(shOn)
+  f.refresh = function()
+    local live = on()
+    for name, c in pairs(w) do
+      c:refresh()
+      if name ~= "head" then c:setEnabled(live) end
+    end
+    local shOn = live and shadowOn()
+    w.shColor:setEnabled(shOn); w.shx:setEnabled(shOn); w.shy:setEnabled(shOn)
   end
-  return g
+  return f
 end
 
 local function buildTextSection(bf, s)
   local function reapply() if GB.Skin then GB.Skin:ReapplyDecor() end end
   local function reCD() if GB.Skin and GB.Skin.RefreshCooldownText then GB.Skin:RefreshCooldownText() end end
-
-  local TEXT_TABS = { { "keybind", "Keybind" }, { "count", "Charge Count" }, { "cdtext", "Countdown" }, { "name", "Name" } }
+  local blocks = {}
   local tab = "keybind"
-  local BLOCK_TOP = -44                   -- blocks hang below the chip row
-  local blocks, chips = {}, {}
-  local selectTab                         -- fwd-declared (chip handlers + s.refresh)
 
-  local function newBlock(key, height)
-    local f = CreateFrame("Frame", nil, bf)
-    f:SetPoint("TOPLEFT", 0, BLOCK_TOP); f:SetPoint("TOPRIGHT", 0, BLOCK_TOP)
-    f:SetHeight(height); f.height = height
-    f:Hide()
-    blocks[key] = f
-    return f
-  end
+  blocks.keybind = textBlock(bf, { title = "Keybind", data = hotkeyData, ensure = ensureHotkey, apply = reapply, on = hotkeyOn,
+    head = function(f) return toggleCell(f, "Custom Keybind", hotkeyOn,
+      function(v) local h = ensureHotkey(); if h then h.enabled = v and true or false end; reapply(); if GB.Skin then GB.Skin:RefreshHotkeyText() end; f.refresh() end) end,
+    zones = { { value = "center", label = "Center" }, { value = "extension", label = "Extension" } }, zoneDefault = "extension",
+    sizeDefault = 13, shadowDefault = false,
+    extra = function(f)
+      local c = toggleCell(f, "Mac Symbol Icons",
+        function() local st = GB.db and GB.db.styleData; return st and st.keybindMods == "symbols" end,
+        function(v)
+          local st = GB.db and GB.db.styleData; if st then st.keybindMods = v and "symbols" or "default" end
+          if GB.Skin then GB.Skin:RefreshHotkeyText() end
+        end)
+      attachTip(c.control, "Mac symbol icons", "Replaces the m-/s-/c-/a- prefixes with ⌘/⇧/⌃/⌥ (macOS binds).")
+      return c
+    end })
+  blocks.count = textBlock(bf, { title = "Charge Count", data = countData, ensure = ensureCount, apply = reapply, on = countOn,
+    head = function(f) return toggleCell(f, "Custom Charge Count", countOn,
+      function(v) local c = ensureCount(); if c then c.enabled = v and true or false end; reapply(); f.refresh() end) end,
+    zones = { { value = "corner", label = "Corner" }, { value = "center", label = "Center" }, { value = "extension", label = "Plate" } }, zoneDefault = "corner",
+    zoneTip = "Corner = Blizzard's spot on the icon; Plate centres it in the plate half (2:1 plate shapes only).",
+    sizeDefault = 14, shadowDefault = false })
+  blocks.cdtext = textBlock(bf, { title = "Countdown", data = cdtextData, ensure = ensureCdtext, apply = reCD, on = cdtextOn,
+    head = function(f) local c = toggleCell(f, "Countdown Numbers", cdtextOn,
+      function(v) local c2 = ensureCdtext(); if c2 then c2.enabled = v and true or false end; reCD(); f.refresh() end)
+      attachTip(c.control, "Countdown numbers", "The number Blizzard draws while a cooldown runs. Off = hidden. Styling applies from the next cooldown update.")
+      return c end,
+    sizeMin = 8, sizeMax = 30, sizeDefault = 16, shadowDefault = true })
+  blocks.name = textBlock(bf, { title = "Name", data = nameData, ensure = ensureName, apply = reapply, on = function() return nameMode() == "custom" end,
+    head = function(f) local c = segCell(f, "Macro Name", { { value = "default", label = "Default" }, { value = "custom", label = "Custom" }, { value = "hidden", label = "Hidden" } },
+      nameMode, function(m) local c2 = ensureName(); c2.mode = m; c2.enabled = nil; reapply(); f.refresh() end)   -- mode supersedes the legacy flag
+      attachTip(c.control, "Macro name", "Default = Blizzard's stock look; Hidden removes it; Custom applies the styling here and widens Blizzard's 36px clip box to the icon.")
+      return c end,
+    zones = { { value = "bottom", label = "Bottom" }, { value = "center", label = "Center" }, { value = "extension", label = "Plate" } }, zoneDefault = "bottom",
+    sizeDefault = 10, shadowDefault = true })
 
-  -- ------------------------------------------------------------------ KEYBIND
-  local kb = newBlock("keybind", 620)
-  local lab = newText(kb, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 18, -14); lab:SetText("Custom keybind")
-  local en = makeToggle(kb,
-    hotkeyOn,
-    function(v) local h = ensureHotkey(); if h then h.enabled = v and true or false end; reapply(); if GB.Skin then GB.Skin:RefreshHotkeyText() end; kb.refresh() end)
-  en:SetPoint("TOPRIGHT", -18, -12)
+  local tabs = UI.segments(bf, { { value = "keybind", label = "Keybind" }, { value = "count", label = "Charge Count" }, { value = "cdtext", label = "Countdown" }, { value = "name", label = "Name" } },
+    function() return tab end, function(v) tab = v; s.refresh() end, { segW = 150 })
+  tabs:SetPoint("TOPLEFT", 50, 0)
 
-  local clab = newText(kb, FONT.body, 12, TEXT, "LEFT"); clab:SetPoint("TOPLEFT", 18, -46); clab:SetText("Color")
-  local cs = colorSwatch(kb,
-    function() local h = hotkeyData(); return h and h.color end,
-    function(c) local h = ensureHotkey(); h.color = c; reapply() end,
-    nil, "Keybind color")
-  cs.swatch:SetPoint("TOPRIGHT", -18, -44)
-
-  local sizeRow = sliderRow(kb, -78, "Size", 6, 28, 1,
-    function() local h = hotkeyData(); return (h and h.size) or 13 end,
-    function(v) local h = ensureHotkey(); h.size = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  -- Font — a dropdown of every LibSharedMedia font (bundled + other addons').
-  local flab = newText(kb, FONT.body, 12, TEXT, "LEFT"); flab:SetPoint("TOPLEFT", 18, -122); flab:SetText("Font")
-  local fontBtn = fontDropdown(kb, 150,
-    function() local h = hotkeyData(); return h and h.font end,
-    function(name) local h = ensureHotkey(); h.font = name; reapply() end)
-  fontBtn:SetPoint("TOPRIGHT", -18, -120)
-
-  -- POSITION — zone (over the icon vs. in the extension plate) + nudge offsets.
-  -- POSITION sits ABOVE Outline & shadow (the owner: shadow offset was above text
-  -- position, "bonkers"); the OUTLINE & SHADOW group now follows it below.
-  local phdr = newText(kb, FONT.head, 13, COLOR.purple, "LEFT"); phdr:SetPoint("TOPLEFT", 18, -160); phdr:SetText("POSITION")
-  local zlab = newText(kb, FONT.body, 12, TEXT, "LEFT"); zlab:SetPoint("TOPLEFT", 18, -190); zlab:SetText("Zone")
-  local zoneBtns, zPrev = {}, nil
-  for i = 2, 1, -1 do
-    local zc = ({ { "center", "Center" }, { "extension", "Extension" } })[i]
-    local b = flatButton(kb, 80, 22, COLOR.heroic, zc[2], 11)
-    if zPrev then b:SetPoint("TOPRIGHT", zPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -188) end
-    b:SetScript("OnClick", function()
-      local h = ensureHotkey(); h.zone = zc[1]
-      for _, e in ipairs(zoneBtns) do e.b:SetActive(e.z == h.zone) end; reapply()
-    end)
-    zoneBtns[#zoneBtns + 1] = { b = b, z = zc[1] }; zPrev = b
-  end
-
-  local oxRow = sliderRow(kb, -222, "Offset X", -40, 40, 1,
-    function() local h = hotkeyData(); return (h and h.offsetX) or 0 end,
-    function(v) local h = ensureHotkey(); h.offsetX = v; reapply() end,
-    function(v) return v .. "px" end)
-  local oyRow = sliderRow(kb, -266, "Offset Y", -40, 40, 1,
-    function() local h = hotkeyData(); return (h and h.offsetY) or 0 end,
-    function(v) local h = ensureHotkey(); h.offsetY = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  -- OUTLINE & SHADOW now follows POSITION (was at -160, above it).
-  local kbStyle = textStyleGroup(kb, -304, hotkeyData, ensureHotkey, reapply, false, hotkeyOn)
-
-  -- Modifiers — a SUB-feature of Custom keybind: swap the keybind's modifier
-  -- prefixes (m-/s-/c-/a-) for Mac symbols (⌘⇧⌃⌥), hyphen removed. Only renders
-  -- while Custom keybind is on (greyed + inert when off); stored per style
-  -- (keybindMods) so the choice persists across the master toggle.
-  local mhdr = newText(kb, FONT.head, 13, COLOR.purple, "LEFT"); mhdr:SetPoint("TOPLEFT", 18, -522); mhdr:SetText("MODIFIERS")
-  local mlab = newText(kb, FONT.body, 12, TEXT, "LEFT"); mlab:SetPoint("TOPLEFT", 18, -552); mlab:SetText("Mac symbol icons")
-  local modTog = makeToggle(kb,
-    function() local st = GB.db and GB.db.styleData; return st and st.keybindMods == "symbols" end,
-    function(v)
-      local st = GB.db and GB.db.styleData; if st then st.keybindMods = v and "symbols" or "default" end
-      if GB.Skin then GB.Skin:RefreshHotkeyText() end
-    end)
-  modTog:SetPoint("TOPRIGHT", -18, -550)
-
-  local kbHint = newText(kb, FONT.body, 11, MUTE, "LEFT")
-  kbHint:SetPoint("TOPLEFT", 18, -582); kbHint:SetPoint("RIGHT", kb, "RIGHT", -16, 0); kbHint:SetJustifyH("LEFT")
-  kbHint:SetText("Everything here needs Custom keybind on. Mac symbol icons replace m-/s-/c-/a- prefixes with ⌘/⇧/⌃/⌥ (macOS binds).")
-  kb.refresh = function()
-    local h = hotkeyData()
-    local on = hotkeyOn()
-    en:refresh(); cs:refresh(); sizeRow:refresh(); oxRow:refresh(); oyRow:refresh()
-    fontBtn:refresh(); modTog:refresh()
-    -- Grey the styling controls when the override is off (Mac symbols gate on it too now).
-    cs.swatch:EnableMouse(on); cs.swatch:SetAlpha(on and 1 or 0.35)
-    sizeRow:setEnabled(on); oxRow:setEnabled(on); oyRow:setEnabled(on)
-    fontBtn:SetEnabled(on)
-    modTog:SetEnabled(on); modTog:SetAlpha(on and 1 or 0.35)
-    for _, e in ipairs(zoneBtns) do e.b:SetActive(on and ((h and h.zone) or "extension") == e.z); e.b:SetEnabled(on) end
-    kbStyle.refresh(on)
-  end
-
-  -- ------------------------------------------------------------- CHARGE COUNT
-  local ct = newBlock("count", 560)
-  local ctlab = newText(ct, FONT.body, 12, TEXT, "LEFT"); ctlab:SetPoint("TOPLEFT", 18, -14); ctlab:SetText("Custom count")
-  local cten = makeToggle(ct, countOn,
-    function(v) local c = ensureCount(); if c then c.enabled = v and true or false end; reapply(); ct.refresh() end)
-  cten:SetPoint("TOPRIGHT", -18, -12)
-
-  local ctclab = newText(ct, FONT.body, 12, TEXT, "LEFT"); ctclab:SetPoint("TOPLEFT", 18, -46); ctclab:SetText("Color")
-  local ctcs = colorSwatch(ct,
-    function() local c = countData(); return c and c.color end,
-    function(col) local c = ensureCount(); c.color = col; reapply() end,
-    nil, "Count color")
-  ctcs.swatch:SetPoint("TOPRIGHT", -18, -44)
-
-  local ctSize = sliderRow(ct, -78, "Size", 6, 28, 1,
-    function() local c = countData(); return (c and c.size) or 14 end,
-    function(v) local c = ensureCount(); c.size = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  local ctflab = newText(ct, FONT.body, 12, TEXT, "LEFT"); ctflab:SetPoint("TOPLEFT", 18, -122); ctflab:SetText("Font")
-  local ctFont = fontDropdown(ct, 150,
-    function() local c = countData(); return c and c.font end,
-    function(name) local c = ensureCount(); c.font = name; reapply() end)
-  ctFont:SetPoint("TOPRIGHT", -18, -120)
-
-  -- POSITION — zone (Blizzard's corner / centred on the icon / in the plate half).
-  -- POSITION sits ABOVE Outline & shadow (the owner); OUTLINE & SHADOW follows below.
-  local ctphdr = newText(ct, FONT.head, 13, COLOR.purple, "LEFT"); ctphdr:SetPoint("TOPLEFT", 18, -160); ctphdr:SetText("POSITION")
-  local ctzlab = newText(ct, FONT.body, 12, TEXT, "LEFT"); ctzlab:SetPoint("TOPLEFT", 18, -190); ctzlab:SetText("Zone")
-  local ctZone, ctzPrev = {}, nil
-  for i = 3, 1, -1 do   -- reverse → Corner ends up leftmost
-    local zc = ({ { "corner", "Corner" }, { "center", "Center" }, { "extension", "Plate" } })[i]
-    local b = flatButton(ct, 60, 22, COLOR.heroic, zc[2], 11)
-    if ctzPrev then b:SetPoint("TOPRIGHT", ctzPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -188) end
-    b:SetScript("OnClick", function()
-      local c = ensureCount(); c.zone = zc[1]
-      for _, e in ipairs(ctZone) do e.b:SetActive(e.z == c.zone) end; reapply()
-    end)
-    ctZone[#ctZone + 1] = { b = b, z = zc[1] }; ctzPrev = b
-  end
-
-  local ctOx = sliderRow(ct, -222, "Offset X", -40, 40, 1,
-    function() local c = countData(); return (c and c.offsetX) or 0 end,
-    function(v) local c = ensureCount(); c.offsetX = v; reapply() end,
-    function(v) return v .. "px" end)
-  local ctOy = sliderRow(ct, -266, "Offset Y", -40, 40, 1,
-    function() local c = countData(); return (c and c.offsetY) or 0 end,
-    function(v) local c = ensureCount(); c.offsetY = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  -- OUTLINE & SHADOW now follows POSITION (was at -160, above it).
-  local ctStyle = textStyleGroup(ct, -304, countData, ensureCount, reapply, false, countOn)
-
-  local ctHint = newText(ct, FONT.body, 11, MUTE, "LEFT")
-  ctHint:SetPoint("TOPLEFT", 18, -522); ctHint:SetPoint("RIGHT", ct, "RIGHT", -16, 0); ctHint:SetJustifyH("LEFT")
-  ctHint:SetText("Styles the charge / stack / item count. Corner = Blizzard's spot on the icon; Plate centres it in the plate half (2:1 plate shapes only).")
-  ct.refresh = function()
-    local c = countData()
-    local on = countOn()
-    cten:refresh(); ctcs:refresh(); ctSize:refresh(); ctOx:refresh(); ctOy:refresh(); ctFont:refresh()
-    ctcs.swatch:EnableMouse(on); ctcs.swatch:SetAlpha(on and 1 or 0.35)
-    ctSize:setEnabled(on); ctOx:setEnabled(on); ctOy:setEnabled(on)
-    ctFont:SetEnabled(on)
-    for _, e in ipairs(ctZone) do e.b:SetActive(on and ((c and c.zone) or "corner") == e.z); e.b:SetEnabled(on) end
-    ctStyle.refresh(on)
-  end
-
-  -- ---------------------------------------------------------------- COUNTDOWN
-  local cd = newBlock("cdtext", 502)
-  local cdlab = newText(cd, FONT.body, 12, TEXT, "LEFT"); cdlab:SetPoint("TOPLEFT", 18, -14); cdlab:SetText("Countdown numbers")
-  local cdTog = makeToggle(cd, cdtextOn,
-    function(v) local c = ensureCdtext(); if c then c.enabled = v and true or false end; reCD(); cd.refresh() end)
-  cdTog:SetPoint("TOPRIGHT", -18, -12)
-
-  local cdclab = newText(cd, FONT.body, 12, TEXT, "LEFT"); cdclab:SetPoint("TOPLEFT", 18, -46); cdclab:SetText("Color")
-  local cdcs = colorSwatch(cd,
-    function() local c = cdtextData(); return c and c.color end,
-    function(col) local c = ensureCdtext(); c.color = col; reCD() end,
-    nil, "Countdown color")
-  cdcs.swatch:SetPoint("TOPRIGHT", -18, -44)
-
-  local cdSize = sliderRow(cd, -78, "Size", 8, 30, 1,
-    function() local c = cdtextData(); return (c and c.size) or 16 end,
-    function(v) local c = ensureCdtext(); c.size = v; reCD() end,
-    function(v) return v .. "px" end)
-
-  local cdflab = newText(cd, FONT.body, 12, TEXT, "LEFT"); cdflab:SetPoint("TOPLEFT", 18, -122); cdflab:SetText("Font")
-  local cdFont = fontDropdown(cd, 150,
-    function() local c = cdtextData(); return c and c.font end,
-    function(name) local c = ensureCdtext(); c.font = name; reCD() end)
-  cdFont:SetPoint("TOPRIGHT", -18, -120)
-
-  -- POSITION (offsets only — countdown numbers have no zone) ABOVE Outline &
-  -- shadow (the owner); OUTLINE & SHADOW follows below.
-  local cdOx = sliderRow(cd, -160, "Offset X", -40, 40, 1,
-    function() local c = cdtextData(); return (c and c.offsetX) or 0 end,
-    function(v) local c = ensureCdtext(); c.offsetX = v; reCD() end,
-    function(v) return v .. "px" end)
-  local cdOy = sliderRow(cd, -204, "Offset Y", -40, 40, 1,
-    function() local c = cdtextData(); return (c and c.offsetY) or 0 end,
-    function(v) local c = ensureCdtext(); c.offsetY = v; reCD() end,
-    function(v) return v .. "px" end)
-
-  -- OUTLINE & SHADOW now follows the offsets (was at -160, above them).
-  local cdStyle = textStyleGroup(cd, -244, cdtextData, ensureCdtext, reCD, true, cdtextOn)
-
-  local cdHint = newText(cd, FONT.body, 11, MUTE, "LEFT")
-  cdHint:SetPoint("TOPLEFT", 18, -456); cdHint:SetPoint("RIGHT", cd, "RIGHT", -16, 0); cdHint:SetJustifyH("LEFT")
-  cdHint:SetText("The number Blizzard draws while a cooldown runs. Off = hidden. Styling applies from the next cooldown update.")
-  cd.refresh = function()
-    local on = cdtextOn()
-    cdTog:refresh(); cdcs:refresh(); cdSize:refresh(); cdOx:refresh(); cdOy:refresh(); cdFont:refresh()
-    cdcs.swatch:EnableMouse(on); cdcs.swatch:SetAlpha(on and 1 or 0.35)
-    cdSize:setEnabled(on); cdOx:setEnabled(on); cdOy:setEnabled(on)
-    cdFont:SetEnabled(on)
-    cdStyle.refresh(on)
-  end
-
-  -- --------------------------------------------------------------------- NAME
-  local nm = newBlock("name", 600)   -- POSITION-above-shadow reorder pushed the long hint lower
-  local nmlab = newText(nm, FONT.body, 12, TEXT, "LEFT"); nmlab:SetPoint("TOPLEFT", 18, -14); nmlab:SetText("Macro name")
-  local nmModes, nmmPrev = {}, nil
-  for i = 3, 1, -1 do   -- reverse → Default ends up leftmost
-    local mc = ({ { "default", "Default" }, { "custom", "Custom" }, { "hidden", "Hidden" } })[i]
-    local b = flatButton(nm, 60, 22, COLOR.heroic, mc[2], 11)
-    if nmmPrev then b:SetPoint("TOPRIGHT", nmmPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -12) end
-    b:SetScript("OnClick", function()
-      local c = ensureName(); c.mode = mc[1]; c.enabled = nil   -- mode supersedes the legacy flag
-      reapply(); nm.refresh()
-    end)
-    nmModes[#nmModes + 1] = { b = b, m = mc[1] }; nmmPrev = b
-  end
-
-  local nmclab = newText(nm, FONT.body, 12, TEXT, "LEFT"); nmclab:SetPoint("TOPLEFT", 18, -46); nmclab:SetText("Color")
-  local nmcs = colorSwatch(nm,
-    function() local c = nameData(); return c and c.color end,
-    function(col) local c = ensureName(); c.color = col; reapply() end,
-    nil, "Name color")
-  nmcs.swatch:SetPoint("TOPRIGHT", -18, -44)
-
-  local nmSize = sliderRow(nm, -78, "Size", 6, 28, 1,
-    function() local c = nameData(); return (c and c.size) or 10 end,
-    function(v) local c = ensureName(); c.size = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  local nmflab = newText(nm, FONT.body, 12, TEXT, "LEFT"); nmflab:SetPoint("TOPLEFT", 18, -122); nmflab:SetText("Font")
-  local nmFont = fontDropdown(nm, 150,
-    function() local c = nameData(); return c and c.font end,
-    function(name) local c = ensureName(); c.font = name; reapply() end)
-  nmFont:SetPoint("TOPRIGHT", -18, -120)
-
-  -- POSITION — zone (Blizzard's bottom edge / centred on the icon / in the plate
-  -- half). POSITION sits ABOVE Outline & shadow (the owner); OUTLINE & SHADOW follows.
-  local nmphdr = newText(nm, FONT.head, 13, COLOR.purple, "LEFT"); nmphdr:SetPoint("TOPLEFT", 18, -160); nmphdr:SetText("POSITION")
-  local nmzlab = newText(nm, FONT.body, 12, TEXT, "LEFT"); nmzlab:SetPoint("TOPLEFT", 18, -190); nmzlab:SetText("Zone")
-  local nmZone, nmzPrev = {}, nil
-  for i = 3, 1, -1 do   -- reverse → Bottom ends up leftmost
-    local zc = ({ { "bottom", "Bottom" }, { "center", "Center" }, { "extension", "Plate" } })[i]
-    local b = flatButton(nm, 60, 22, COLOR.heroic, zc[2], 11)
-    if nmzPrev then b:SetPoint("TOPRIGHT", nmzPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -188) end
-    b:SetScript("OnClick", function()
-      local c = ensureName(); c.zone = zc[1]
-      for _, e in ipairs(nmZone) do e.b:SetActive(e.z == c.zone) end; reapply()
-    end)
-    nmZone[#nmZone + 1] = { b = b, z = zc[1] }; nmzPrev = b
-  end
-
-  local nmOx = sliderRow(nm, -222, "Offset X", -40, 40, 1,
-    function() local c = nameData(); return (c and c.offsetX) or 0 end,
-    function(v) local c = ensureName(); c.offsetX = v; reapply() end,
-    function(v) return v .. "px" end)
-  local nmOy = sliderRow(nm, -266, "Offset Y", -40, 40, 1,
-    function() local c = nameData(); return (c and c.offsetY) or 0 end,
-    function(v) local c = ensureName(); c.offsetY = v; reapply() end,
-    function(v) return v .. "px" end)
-
-  -- OUTLINE & SHADOW now follows POSITION (was at -160, above it).
-  local nmStyle = textStyleGroup(nm, -304, nameData, ensureName, reapply, true,
-    function() return nameMode() == "custom" end)
-
-  local nmHint = newText(nm, FONT.body, 11, MUTE, "LEFT")
-  nmHint:SetPoint("TOPLEFT", 18, -516); nmHint:SetPoint("RIGHT", nm, "RIGHT", -16, 0); nmHint:SetJustifyH("LEFT")
-  nmHint:SetText("The macro-name label. Default = Blizzard's stock look; Hidden removes it entirely. Custom applies the styling above and widens Blizzard's 36px clip box to the icon. Plate centres it in the plate half (2:1 plate shapes only).")
-  nm.refresh = function()
-    local c = nameData()
-    local m = nameMode()
-    local on = m == "custom"
-    nmcs:refresh(); nmSize:refresh(); nmOx:refresh(); nmOy:refresh(); nmFont:refresh()
-    for _, e in ipairs(nmModes) do e.b:SetActive(e.m == m) end
-    nmcs.swatch:EnableMouse(on); nmcs.swatch:SetAlpha(on and 1 or 0.35)
-    nmSize:setEnabled(on); nmOx:setEnabled(on); nmOy:setEnabled(on)
-    nmFont:SetEnabled(on)
-    for _, e in ipairs(nmZone) do e.b:SetActive(on and ((c and c.zone) or "bottom") == e.z); e.b:SetEnabled(on) end
-    nmStyle.refresh(on)
-  end
-
-  -- Chip row (which text element is being edited) + selection.
-  selectTab = function(k)
-    tab = k
-    for _, c in ipairs(chips) do c.b:SetActive(c.k == k) end
-    for key, f in pairs(blocks) do f:SetShown(key == k) end
-    local b = blocks[k]
-    b.refresh()
-    bf:SetHeight(-BLOCK_TOP + b.height)
-    relayout()
-  end
-  local cPrev
-  for _, t in ipairs(TEXT_TABS) do
-    local w = 24 + t[2]:len() * 6
-    local b = flatButton(bf, w, 22, COLOR.heroic, t[2], 11); b:SetBase(0.2)
-    if cPrev then b:SetPoint("TOPLEFT", cPrev, "TOPRIGHT", 6, 0) else b:SetPoint("TOPLEFT", 18, -12) end
-    b:SetScript("OnClick", function() selectTab(t[1]) end)
-    chips[#chips + 1] = { b = b, k = t[1] }; cPrev = b
-  end
-
-  bf:SetHeight(-BLOCK_TOP + blocks[tab].height)
-  s.refresh = function() selectTab(tab) end
-end
-
--- Empty slots — dim or hide bar slots with no action. Alpha-only (the secure
--- button is never shown/hidden — pure-skin wall); while an action is on the
--- cursor the slots return automatically so drop targets stay visible.
-local function buildEmptySection(bf, s)
-  local function mode() return (GB.db and GB.db.emptySlots) or "normal" end
-  local mlab = newText(bf, FONT.body, 12, TEXT, "LEFT"); mlab:SetPoint("TOPLEFT", 18, -14); mlab:SetText("Empty slots")
-  local modeBtns, prev = {}, nil
-  local function setMode(v)
-    if GB.Skin and GB.Skin.SetEmptySlots then GB.Skin:SetEmptySlots(v)
-    elseif GB.db then GB.db.emptySlots = v end
-    s.refresh()
-  end
-  for i = 3, 1, -1 do   -- reverse → Normal ends up leftmost
-    local mc = ({ { "normal", "Normal" }, { "dim", "Dim" }, { "hide", "Hidden" } })[i]
-    local b = flatButton(bf, 60, 22, COLOR.heroic, mc[2], 11)
-    if prev then b:SetPoint("TOPRIGHT", prev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -12) end
-    b:SetScript("OnClick", function() setMode(mc[1]) end)
-    modeBtns[#modeBtns + 1] = { b = b, v = mc[1] }; prev = b
-  end
-
-  local dimRow = sliderRow(bf, -46, "Dim opacity", 0.05, 0.9, 0.05,
-    function() return (GB.db and GB.db.emptySlotAlpha) or 0.35 end,
-    function(v)
-      if GB.Skin and GB.Skin.SetEmptySlotAlpha then GB.Skin:SetEmptySlotAlpha(v)
-      elseif GB.db then GB.db.emptySlotAlpha = v end
-    end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -90); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Slots with no action fade or vanish. They come back on their own while you drag a spell, so drop targets stay visible.")
-  bf:SetHeight(124)
+  bf:SetHeight(37 + 230)
   s.refresh = function()
-    for _, e in ipairs(modeBtns) do e.b:SetActive(e.v == mode()) end
-    dimRow:setEnabled(mode() == "dim"); dimRow:refresh()
+    tabs:refresh()
+    for key, f in pairs(blocks) do f:SetShown(key == tab) end
+    blocks[tab].refresh()
   end
 end
 
--- Cast & channel — our pill-shaped fill (replaces Blizzard's square drain) and
--- the cancel/interrupt burst. All db-level (not per-style); the engine reads
--- these live on the NEXT cast (styleCast / CastFillOnUpdate / PlayEndBurstRed in
--- Skin.lua), so the setters are plain db writes — no ReapplyDecor, and the
--- preview pane doesn't animate casts. Test by casting / cancelling a spell.
-local function buildCastSection(bf, s)
-  local rows = {}
-  local function showCast() C:SetPreviewState("cast") end   -- fill edits animate on the Cast chip
-  -- FILL (cast fills up, channel drains).
-  local flab = newText(bf, FONT.body, 12, TEXT, "LEFT"); flab:SetPoint("TOPLEFT", 18, -14); flab:SetText("Fill color")
-  local fcs = colorSwatch(bf,
-    function() return GB.db and GB.db.castFillColor end,
-    function(c) if GB.db then GB.db.castFillColor = c end; showCast() end,
-    nil, "Cast fill color")
-  fcs.swatch:SetPoint("TOPRIGHT", -18, -12)
-  rows[#rows + 1] = fcs
-
-  local opRow = sliderRow(bf, -46, "Opacity", 0, 1, 0.05,
-    function() return (GB.db and GB.db.castFillAlpha) or 0.55 end,
-    function(v) if GB.db then GB.db.castFillAlpha = v end; showCast() end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-  rows[#rows + 1] = opRow
-
-  local dirR = dirRow(bf, -96, "Direction",
-    function() return (GB.db and GB.db.castDrainDir) or "up" end,
-    function(d) if GB.db then GB.db.castDrainDir = d end; showCast() end)
-  rows[#rows + 1] = dirR
-
-  -- COMPLETE = the burst on a SUCCESSFUL cast/channel (Blizzard's completion flash,
-  -- shaped + tinted). Distinct from the cooldown Finish flash (Cooldown & availability),
-  -- which fires when an ability comes OFF cooldown.
-  local cclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); cclab:SetPoint("TOPLEFT", 18, -136); cclab:SetText("Complete color")
-  local ccs = colorSwatch(bf,
-    function() return GB.db and GB.db.castCompleteColor end,
-    function(c) if GB.db then GB.db.castCompleteColor = c end end,
-    nil, "Cast complete color")
-  ccs.swatch:SetPoint("TOPRIGHT", -18, -134)
-  rows[#rows + 1] = ccs
-
-  -- INTERRUPT / cancel = Blizzard's completion burst replayed in this colour.
-  local ihdr = newText(bf, FONT.head, 13, COLOR.purple, "LEFT"); ihdr:SetPoint("TOPLEFT", 18, -172); ihdr:SetText("INTERRUPT")
-  local iclab = newText(bf, FONT.body, 12, TEXT, "LEFT"); iclab:SetPoint("TOPLEFT", 18, -202); iclab:SetText("Color")
-  local ics = colorSwatch(bf,
-    function() return GB.db and GB.db.castInterruptColor end,
-    function(c) if GB.db then GB.db.castInterruptColor = c end end,
-    nil, "Cast interrupt color")
-  ics.swatch:SetPoint("TOPRIGHT", -18, -200)
-  rows[#rows + 1] = ics
-
-  local spRow = sliderRow(bf, -234, "Speed", 0.2, 2, 0.1,
-    function() return (GB.db and GB.db.castInterruptSpeed) or 0.6 end,
-    function(v) if GB.db then GB.db.castInterruptSpeed = v end end,
-    function(v) return string.format("%.1fx", v) end)
-  rows[#rows + 1] = spRow
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -274); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Changes apply on your next cast. Speed <1 slows the interrupt burst.")
-  bf:SetHeight(304)
-  s.refresh = function() for _, r in ipairs(rows) do r:refresh() end end
+local function buildEmptySection(bf, s)
+  -- ★ STAGE 3 (2026-09-21): the Empty Slots mock (`660:4995`): a three-way bar and the dim dial.
+  local function mode() return (GB.db and GB.db.emptySlots) or "normal" end
+  local seg = at(segCell(bf, "Empty Slots", { { value = "normal", label = "Normal" }, { value = "dim", label = "Dim" }, { value = "hide", label = "Hidden" } },
+    mode, function(v)
+      if GB.Skin and GB.Skin.SetEmptySlots then GB.Skin:SetEmptySlots(v) elseif GB.db then GB.db.emptySlots = v end
+      s.refresh()
+    end, { padX = 10 }), 50, 0)
+  attachTip(seg.control, "Empty slots", "Slots with no action fade or vanish. They come back on their own while you drag a spell, so drop targets stay visible.")
+  local dim = at(UI.dial(bf, { label = "Dim Opacity", min = 5, max = 90, step = 5, unit = "%",
+    get = function() return math.floor(((GB.db and GB.db.emptySlotAlpha) or 0.35) * 100 + 0.5) end,
+    set = function(v)
+      v = v / 100
+      if GB.Skin and GB.Skin.SetEmptySlotAlpha then GB.Skin:SetEmptySlotAlpha(v) elseif GB.db then GB.db.emptySlotAlpha = v end
+    end }), 245, 0)
+  bf:SetHeight(40)
+  s.refresh = function()
+    seg:refresh(); dim:refresh(); dim:setEnabled(mode() == "dim")
+  end
 end
 
--- Glows — the unified shaped-glow matrix (session 10). Every button state that
--- drives the multi-part glow is ONE row: on-toggle · colour · layers (both / inner /
--- outer) · opacity, plus a global Pulse speed. Supersedes the old separate Proc glow
--- + State highlights sections (one engine now — GB.db.triggers). Cast fill/burst stay
--- in Cast & channel; only the cast/channel HALO colour+opacity live here.
+local function buildCastSection(bf, s)
+  -- ★ STAGE 3 (2026-09-21): the Cast & Channel mock (`657:4581`), body-relative.
+  local w = {}
+  local function showCast() C:SetPreviewState("cast") end   -- fill edits animate on the Cast chip
+  w.fill = at(chipCell(bf, "Fill Color", {
+    get = function() return GB.db and GB.db.castFillColor end,
+    set = function(c) if GB.db then GB.db.castFillColor = c end; showCast() end,
+    optional = true, label = "Bars › Cast fill color", title = "Cast Fill Color" }), 50, 0)
+  w.alpha = at(UI.dial(bf, { label = "Opacity %", min = 0, max = 100, step = 5, unit = "%",
+    get = function() return math.floor(((GB.db and GB.db.castFillAlpha) or 0.55) * 100 + 0.5) end,
+    set = function(v) if GB.db then GB.db.castFillAlpha = v / 100 end; showCast() end }), 186, 0)
+  w.dir = at(segCell(bf, "Cast Fill Direction", DIR_OPTS,
+    function() return (GB.db and GB.db.castDrainDir) or "up" end,
+    function(d) if GB.db then GB.db.castDrainDir = d end; showCast() end, { padX = 8 }), 424, 0)
+  w.complete = at(chipCell(bf, "Complete Color", {
+    get = function() return GB.db and GB.db.castCompleteColor end,
+    set = function(c) if GB.db then GB.db.castCompleteColor = c end end,
+    optional = true, label = "Bars › Cast complete color", title = "Cast Complete Color" }), 649, 0)
+  w.interrupt = at(chipCell(bf, "Interrupt Color", {
+    get = function() return GB.db and GB.db.castInterruptColor end,
+    set = function(c) if GB.db then GB.db.castInterruptColor = c end end,
+    optional = true, label = "Bars › Cast interrupt color", title = "Cast Interrupt Color" }), 50, 55)
+  w.speed = at(UI.dial(bf, { label = "Interrupt Burst Animation Speed", min = 0.2, max = 2, step = 0.1, unit = "x",
+    get = function() return (GB.db and GB.db.castInterruptSpeed) or 0.6 end,
+    set = function(v) if GB.db then GB.db.castInterruptSpeed = v end end }), 186, 55)
+  attachTip(w.speed.strip, "Interrupt burst speed", "Changes apply on your next cast. Below 1x slows the interrupt burst.")
+  bf:SetHeight(90)
+  s.refresh = function() for _, c in pairs(w) do c:refresh() end end
+end
+
 local function trig(key) return GB.db and GB.db.triggers and GB.db.triggers[key] end
 
 -- Layer cycle cell: a compact button showing the trigger's current layers
 -- ("Both"/"Inner"/"Outer"); click cycles Both → Inner → Outer. onChange() lets the
 -- caller reflect it in the preview. Returns { btn, refresh, setEnabled }.
 local LAYER_LABEL = { both = "Both", inner = "Inner", outer = "Outer" }
-local LAYER_NEXT  = { both = "inner", inner = "outer", outer = "both" }
-local function layersCell(bf, x, yTop, key, onChange)
-  local b = flatButton(bf, 50, 20, COLOR.heroic, "Both", 11)
-  b:SetPoint("TOPLEFT", x, yTop)
-  local function cur() local t = trig(key); return (t and t.layers) or "both" end
-  local function paint() b.text:SetText(LAYER_LABEL[cur()] or "Both") end
-  b:SetScript("OnClick", function()
-    if GB.Glows then GB.Glows:SetTriggerLayers(key, LAYER_NEXT[cur()] or "both") end
-    paint(); if onChange then onChange() end
-  end)
-  paint()
-  local cell = { btn = b }
-  function cell:refresh() paint() end
-  function cell:setEnabled(on) b:SetEnabled(on) end
-  return cell
-end
+local LAYER_OPTS = { { value = "both", label = "Both" }, { value = "inner", label = "Inner" }, { value = "outer", label = "Outer" } }
 
--- Compact inline opacity slider for a matrix row (0–100%). Shares the sliders'
--- click/drag-anywhere-to-seek QOL. onChange() refreshes the preview. { refresh, setEnabled }.
-local function opacityCell(bf, xLeft, yTop, key, onChange)
-  local val = newText(bf, FONT.label, 11, TEXT, "RIGHT"); val:SetPoint("TOPRIGHT", -12, yTop - 3)
-  local sl = CreateFrame("Slider", nil, bf)
-  sl:SetPoint("TOPLEFT", xLeft, yTop - 4); sl:SetPoint("TOPRIGHT", -46, yTop - 4); sl:SetHeight(16)
-  sl:EnableMouse(true); sl:SetOrientation("HORIZONTAL"); sl:SetMinMaxValues(0, 1); sl:SetValueStep(0.05); sl:SetObeyStepOnDrag(true)
-  local track = sl:CreateTexture(nil, "BACKGROUND"); track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(6)
-  track:SetColorTexture(COLOR.heroic.r, COLOR.heroic.g, COLOR.heroic.b, 0.20)
-  local thumb = sl:CreateTexture(nil, "ARTWORK"); thumb:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 1)
-  thumb:SetSize(5, 18); sl:SetThumbTexture(thumb)
-  local applying = false
-  local function show(v) val:SetText(math.floor(v * 100 + 0.5) .. "%") end
-  sl:SetScript("OnValueChanged", function(_, v)
-    if not applying then if GB.Glows then GB.Glows:SetTriggerOpacity(key, v) end; if onChange then onChange() end end
-    show(v)
-  end)
-  local function seek(self)
-    local left, w = self:GetLeft(), self:GetWidth()
-    if not (left and w and w > 0) then return end
-    local frac = (GetCursorPosition() / self:GetEffectiveScale() - left) / w
-    frac = math.max(0, math.min(1, frac))
-    self:SetValue(math.floor(frac / 0.05 + 0.5) * 0.05)
-  end
-  -- A drag STARTING ON THE THUMB belongs to the native slider alone: with our
-  -- seek also writing every frame, the two quantize the cursor differently
-  -- near step boundaries and the value flickers between neighbours (the owner:
-  -- "blurs" — worst on wide ranges like Gap's 0–64). Off-thumb, seek owns it.
-  sl:SetScript("OnMouseDown", function(self)
-    if not self:IsEnabled() then return end
-    local left, w = self:GetLeft(), self:GetWidth()
-    if left and w and w > 0 then
-      local cx = GetCursorPosition() / self:GetEffectiveScale()
-      local mn, mx = self:GetMinMaxValues()
-      local tx = left + ((self:GetValue() - mn) / math.max(mx - mn, 1e-6)) * w
-      if math.abs(cx - tx) <= 8 then return end   -- on the thumb → native drag
-    end
-    self._seek = true; seek(self)
-  end)
-  sl:SetScript("OnMouseUp", function(self) self._seek = false end)
-  sl:SetScript("OnUpdate", function(self)
-    if self._seek then
-      if self:IsEnabled() and IsMouseButtonDown("LeftButton") then seek(self) else self._seek = false end
-    end
-  end)
-  local cell = {}
-  function cell:refresh() applying = true; local t = trig(key); sl:SetValue((t and t.opacity) or 1); show((t and t.opacity) or 1); applying = false end
-  function cell:setEnabled(on) sl:SetEnabled(on); sl:SetAlpha(on and 1 or 0.35) end
-  cell:refresh()
-  return cell
-end
-
--- The triggers, in priority (display) order. Third field = the preview chip to
--- flip to on edit — every trigger has one now (session 12).
 local GLOW_ROWS = {
   { "proc", "Proc", "proc" }, { "highlight", "Highlight", "highlight" },
   { "cast", "Cast", "cast" }, { "channel", "Channel", "channel" },
   { "hover", "Hover", "hover" }, { "selected", "Selected", "selected" },
   { "flash", "Flash", "flash" }, { "assist", "Assist", "assist" },
 }
-local GX_TOG, GX_SW, GX_LAY, GX_SLIDE = 92, 142, 180, 236
+-- ★ STAGE 3 (2026-09-21): the Glows mock (`651:3928`) — Pulse Speed, then a
+-- TABLE: a header row (Glow Status · Color · Layer · Opacity) and one row per
+-- trigger, 26 apart: the name right-aligned, OFF | ON, a chip, the layer
+-- picker, a bare dial.
+local GX_LAB, GX_TOG, GX_SW, GX_LAY, GX_DIAL = 140, 152, 276, 315, 409
 local function buildGlowsSection(bf, s)
   local rows = {}
   local function showPrev(prev) if prev then C:SetPreviewState(prev) end end
 
-  -- Global: pulse speed (applies to every pulsing trigger — proc / assist / flash).
-  rows[#rows + 1] = sliderRow(bf, -14, "Pulse speed", 0.3, 2, 0.1,
-    function() return (GB.db and GB.db.glowPulseSpeed) or 1 end,
-    function(v) if GB.Glows then GB.Glows:SetPulseSpeed(v) end end,
-    function(v) return string.format("%.1fx", v) end)
+  local pulse = at(UI.dial(bf, { label = "Pulse Speed", min = 0.3, max = 2, step = 0.1, unit = "x",
+    get = function() return (GB.db and GB.db.glowPulseSpeed) or 1 end,
+    set = function(v) if GB.Glows then GB.Glows:SetPulseSpeed(v) end end }), 50, 0)
+  rows[#rows + 1] = pulse
 
-  -- Column headers.
-  local function head(x, txt) local h = newText(bf, FONT.body, 10.5, MUTE, "LEFT"); h:SetPoint("TOPLEFT", x, -52); h:SetText(txt) end
-  head(GX_TOG, "on"); head(GX_SW, "colour"); head(GX_LAY, "layers"); head(GX_SLIDE + 8, "opacity")
+  local function head(x, txt, justify)
+    local h = UI.label(bf, txt)
+    if justify == "RIGHT" then h:SetPoint("TOPRIGHT", bf, "TOPLEFT", x, -53); h:SetJustifyH("RIGHT")
+    else h:SetPoint("TOPLEFT", x, -53) end
+  end
+  head(GX_LAB, "Glow Status", "RIGHT"); head(GX_SW, "Color"); head(GX_LAY, "Layer"); head(GX_DIAL + 50, "Opacity")
 
-  local y = -72
+  local y = 80
   for _, r in ipairs(GLOW_ROWS) do
     local key, label, prev = r[1], r[2], r[3]
-    local yTop = y
-    local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 18, yTop); lab:SetText(label)
-
-    local cs = colorSwatch(bf,
-      function() local t = trig(key); return t and t.color end,
-      function(c) if GB.Glows then GB.Glows:SetTriggerColor(key, c) end; showPrev(prev) end,
-      nil, "Glow › " .. label)
-    cs.swatch:SetPoint("TOPLEFT", GX_SW, yTop - 1)
-
-    local lay = layersCell(bf, GX_LAY, yTop - 1, key, function() showPrev(prev) end)
-    local op = opacityCell(bf, GX_SLIDE, yTop, key, function() showPrev(prev) end)
-
-    -- Enable toggle greys the row's controls when off.
-    local function applyEnabled()
-      local t = trig(key); local on = t and t.enabled ~= false
-      cs.swatch:SetEnabled(on); cs.swatch:SetAlpha(on and 1 or 0.4)
-      lay:setEnabled(on); op:setEnabled(on)
-    end
-    local tog = makeToggle(bf,
+    local lab = UI.label(bf, label); lab:SetPoint("TOPRIGHT", bf, "TOPLEFT", GX_LAB, -y - 2); lab:SetJustifyH("RIGHT")
+    local tog = at(UI.toggleBar(bf,
       function() local t = trig(key); return t and t.enabled ~= false end,
-      function(on) if GB.Glows then GB.Glows:SetTriggerEnabled(key, on) end; applyEnabled(); showPrev(prev) end)
-    tog:SetPoint("TOPLEFT", GX_TOG, yTop - 1)
-
-    rows[#rows + 1] = { refresh = function() cs:refresh(); lay:refresh(); op:refresh(); tog:refresh(); applyEnabled() end }
-    y = y - 30
+      function(on) if GB.Glows then GB.Glows:SetTriggerEnabled(key, on) end; s.refresh(); showPrev(prev) end), GX_TOG, y)
+    local chip = at(UI.chip(bf, {
+      get = function() local t = trig(key); return t and t.color end,
+      set = function(c) if GB.Glows then GB.Glows:SetTriggerColor(key, c) end; showPrev(prev) end,
+      label = "Bars › Glow › " .. label, title = label .. " Glow Color" }), GX_SW, y)   -- a required colour: the bare swatch
+    local lay = at(UI.pick(bf, 80,
+      function() local t = trig(key); return LAYER_LABEL[(t and t.layers) or "both"] end,
+      function() return LAYER_OPTS end,
+      function() local t = trig(key); return (t and t.layers) or "both" end,
+      function(v) if GB.Glows then GB.Glows:SetTriggerLayers(key, v) end; showPrev(prev) end), GX_LAY, y)
+    local op = at(UI.dial(bf, { bare = true, min = 0, max = 100, step = 5, unit = "%",
+      get = function() local t = trig(key); return math.floor(((t and t.opacity) or 1) * 100 + 0.5) end,
+      set = function(v) if GB.Glows then GB.Glows:SetTriggerOpacity(key, v / 100) end; showPrev(prev) end }), GX_DIAL, y)
+    rows[#rows + 1] = { refresh = function()
+      tog:refresh(); chip:refresh(); lay:refresh(); op:refresh()
+      local t = trig(key); local on = t and t.enabled ~= false
+      lab:SetAlpha(on and 1 or 0.5); chip:setEnabled(on); lay:SetEnabled(on); op:setEnabled(on)
+    end }
+    y = y + 26
   end
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, y - 6); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Click a Layers cell to cycle Both / Inner / Outer. Cast fill/burst live in Cast & channel.")
-  bf:SetHeight(-y + 40)
+  bf:SetHeight(y - 26 + 17)
 
   s.refresh = function()
     for _, rw in ipairs(rows) do rw:refresh() end
@@ -1587,94 +989,55 @@ local function buildGlowsSection(bf, s)
   end
 end
 
--- Cooldown & availability — cooldown sweep tint / opacity, our shape-masked finish
--- flash, and the availability tint (usable / unusable / out-of-mana). All
--- combat-safe: we react to Blizzard's rendered output, never reading secret values.
 local function buildCooldownSection(bf, s)
-  local rows = {}
-  local function showCD() C:SetPreviewState("cooldown") end   -- reflect sweep edits on the Cooldown chip
-
-  local cl = newText(bf, FONT.body, 12, TEXT, "LEFT"); cl:SetPoint("TOPLEFT", 18, -14); cl:SetText("Sweep color")
-  local cs = colorSwatch(bf,
-    function() return GB.db and GB.db.swipeColor end,
-    function(c) if GB.Skin then GB.Skin:SetSwipeColor(c) end; showCD() end,
-    nil, "Sweep color")
-  cs.swatch:SetPoint("TOPRIGHT", -18, -12); rows[#rows + 1] = cs
-
-  local opRow = sliderRow(bf, -46, "Sweep opacity", 0, 1, 0.05,
-    function() return (GB.db and GB.db.swipeAlpha) or 0.8 end,
-    function(v) if GB.Skin then GB.Skin:SetSwipeAlpha(v) end; showCD() end,
-    function(v) return math.floor(v * 100 + 0.5) .. "%" end)
-  rows[#rows + 1] = opRow
-
-  -- Finish flash: toggle + its colour (colour greyed while off). Both replay the
-  -- flash on the preview so you can tune it without waiting for a real cooldown.
-  local fl = newText(bf, FONT.body, 12, TEXT, "LEFT"); fl:SetPoint("TOPLEFT", 18, -92); fl:SetText("Finish flash")
-  local fTog = makeToggle(bf,
+  -- ★ STAGE 3 (2026-09-21): the Cooldown & Availability mock (`659:4804`) — a
+  -- sweep row, a hairline at y=59, an availability row at y=79.
+  local w = {}
+  local function showCD() C:SetPreviewState("cooldown") end
+  w.sweep = at(chipCell(bf, "Sweep Color", {
+    get = function() return GB.db and GB.db.swipeColor end,
+    set = function(c) if GB.Skin then GB.Skin:SetSwipeColor(c) end; showCD() end,
+    optional = true, label = "Bars › Sweep color", title = "Sweep Color" }), 50, 0)
+  w.sweepAlpha = at(UI.dial(bf, { label = "Sweep Opacity", min = 0, max = 100, step = 5, unit = "%",
+    get = function() return math.floor(((GB.db and GB.db.swipeAlpha) or 0.8) * 100 + 0.5) end,
+    set = function(v) if GB.Skin then GB.Skin:SetSwipeAlpha(v / 100) end; showCD() end }), 182, 0)
+  w.flash = at(toggleCell(bf, "Finish Flash",
     function() return GB.db and GB.db.finishFlash end,
-    function(v) if GB.Skin then GB.Skin:SetFinishFlash(v) end; s.refresh(); C:PlayPreviewFlash() end)
-  fTog:SetPoint("TOPRIGHT", -18, -90); rows[#rows + 1] = fTog
-  local fcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); fcl:SetPoint("TOPLEFT", 30, -122); fcl:SetText("Flash color")
-  local fcs = colorSwatch(bf,
-    function() return GB.db and GB.db.finishFlashColor end,
-    function(c) if GB.Skin then GB.Skin:SetFinishFlashColor(c) end; C:PlayPreviewFlash() end,
-    nil, "Finish flash color")
-  fcs.swatch:SetPoint("TOPRIGHT", -18, -120); rows[#rows + 1] = fcs
+    function(v) if GB.Skin then GB.Skin:SetFinishFlash(v) end; s.refresh(); C:PlayPreviewFlash() end), 467, 0)
+  attachTip(w.flash.control, "Finish flash", "A shape-matched burst when a cooldown completes.")
+  w.flashColor = at(chipCell(bf, "Finish Flash Color", {
+    get = function() return GB.db and GB.db.finishFlashColor end,
+    set = function(c) if GB.Skin then GB.Skin:SetFinishFlashColor(c) end; C:PlayPreviewFlash() end,
+    optional = true, label = "Bars › Finish flash color", title = "Finish Flash Color" }), 597, 0)
+  local rule = bf:CreateTexture(nil, "ARTWORK"); rule:SetPoint("TOPLEFT", 50, -59); rule:SetSize(730, 1); UI.tint(rule, COLOR.paper)
 
-  -- AVAILABILITY — restyle Blizzard's usable/unusable/out-of-mana icon tint.
-  local avlab = newText(bf, FONT.head, 13, COLOR.purple, "LEFT"); avlab:SetPoint("TOPLEFT", 18, -164); avlab:SetText("AVAILABILITY")
-  local dl = newText(bf, FONT.body, 12, TEXT, "LEFT"); dl:SetPoint("TOPLEFT", 18, -194); dl:SetText("Desaturate unusable")
-  local dTog = makeToggle(bf,
+  w.desat = at(toggleCell(bf, "Desaturate Unusable",
     function() return GB.db and GB.db.availDesaturate end,
-    function(v) if GB.Skin then GB.Skin:SetAvailDesaturate(v) end end)
-  dTog:SetPoint("TOPRIGHT", -18, -192); rows[#rows + 1] = dTog
-  local ul = newText(bf, FONT.body, 12, TEXT, "LEFT"); ul:SetPoint("TOPLEFT", 18, -226); ul:SetText("Unusable tint")
-  local ucs = colorSwatch(bf,
-    function() return GB.db and GB.db.availUnusable end,
-    function(c) if GB.Skin then GB.Skin:SetAvailUnusable(c) end end,
-    nil, "Unusable tint")
-  ucs.swatch:SetPoint("TOPRIGHT", -18, -224); rows[#rows + 1] = ucs
-  local ml = newText(bf, FONT.body, 12, TEXT, "LEFT"); ml:SetPoint("TOPLEFT", 18, -256); ml:SetText("Out-of-mana tint")
-  local mcs = colorSwatch(bf,
-    function() return GB.db and GB.db.availOOM end,
-    function(c) if GB.Skin then GB.Skin:SetAvailOOM(c) end end,
-    nil, "Out-of-mana tint")
-  mcs.swatch:SetPoint("TOPRIGHT", -18, -254); rows[#rows + 1] = mcs
-
-  -- Out of range: tint the icon to match Blizzard's red out-of-range keybind.
-  local rl = newText(bf, FONT.body, 12, TEXT, "LEFT"); rl:SetPoint("TOPLEFT", 18, -288); rl:SetText("Tint out-of-range")
-  local rTog = makeToggle(bf,
+    function(v) if GB.Skin then GB.Skin:SetAvailDesaturate(v) end end), 49, 79)
+  w.unusable = at(chipCell(bf, "Unusable Tint", {
+    get = function() return GB.db and GB.db.availUnusable end,
+    set = function(c) if GB.Skin then GB.Skin:SetAvailUnusable(c) end end,
+    optional = true, label = "Bars › Unusable tint", title = "Unusable Tint" }), 219, 79)
+  w.oom = at(chipCell(bf, "Out of Mana Tint", {
+    get = function() return GB.db and GB.db.availOOM end,
+    set = function(c) if GB.Skin then GB.Skin:SetAvailOOM(c) end end,
+    optional = true, label = "Bars › Out-of-mana tint", title = "Out of Mana Tint" }), 341, 79)
+  w.range = at(toggleCell(bf, "Tint Out-of-Range",
     function() return GB.db and GB.db.rangeTint end,
-    function(v) if GB.Skin then GB.Skin:SetRangeTint(v) end; s.refresh() end)
-  rTog:SetPoint("TOPRIGHT", -18, -286); rows[#rows + 1] = rTog
-  local rcl = newText(bf, FONT.body, 12, TEXT, "LEFT"); rcl:SetPoint("TOPLEFT", 30, -318); rcl:SetText("Range color")
-  local rcs = colorSwatch(bf,
-    function() return GB.db and GB.db.rangeColor end,
-    function(c) if GB.Skin then GB.Skin:SetRangeColor(c) end end,
-    nil, "Out-of-range tint")
-  rcs.swatch:SetPoint("TOPRIGHT", -18, -316); rows[#rows + 1] = rcs
-
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -354); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Availability tints react to Blizzard's own checks (no preview — test on the bars). Out-of-range matches the red keybind; unusable/mana fire for wrong form, missing resources, etc. The base icon color lives in Decoration layers. Countdown-number styling lives in Text.")
-  bf:SetHeight(394)
+    function(v) if GB.Skin then GB.Skin:SetRangeTint(v) end; s.refresh() end), 482, 79)
+  attachTip(w.range.control, "Tint out-of-range", "Tints the icon and recolors the keybind text while the target is out of range.")
+  w.rangeColor = at(chipCell(bf, "Out-of-Range Color", {
+    get = function() return GB.db and GB.db.rangeColor end,
+    set = function(c) if GB.Skin then GB.Skin:SetRangeColor(c) end end,
+    optional = true, label = "Bars › Out-of-range color", title = "Out-of-Range Color" }), 633, 79)
+  bf:SetHeight(120)
   s.refresh = function()
-    for _, r in ipairs(rows) do if r.refresh then r:refresh() end end
-    local flashOn = GB.db and GB.db.finishFlash
-    fcl:SetAlpha(flashOn and 1 or 0.35); fcs.swatch:EnableMouse(flashOn and true or false); fcs.swatch:SetAlpha(flashOn and 1 or 0.35)
-    local rangeOn = GB.db and GB.db.rangeTint
-    rcl:SetAlpha(rangeOn and 1 or 0.35); rcs.swatch:EnableMouse(rangeOn and true or false); rcs.swatch:SetAlpha(rangeOn and 1 or 0.35)
-    C:SetPreviewState("cooldown")   -- show the sweep while this section is open
+    for _, c in pairs(w) do c:refresh() end
+    w.flashColor:setEnabled(GB.db and GB.db.finishFlash and true or false)
+    w.rangeColor:setEnabled(GB.db and GB.db.rangeTint and true or false)
   end
 end
 
--- --------------------------------------------------------------------------
--- Live preview pane (left). A sample construction rendered from the SAME shape
--- art the skin engine uses, so it matches the real bars. State chips let you
--- see proc / cooldown / hover / selected / flash on demand (you can't trigger a
--- real proc while editing). It's our own frame, so a fresh mask per change is
--- cheap and dodges the live-mask re-render quirk entirely.
--- --------------------------------------------------------------------------
 local function sampleIconTexture()
   local b = _G["ActionButton1"]
   local ic = b and (b.icon or b.Icon)
@@ -2014,22 +1377,17 @@ function C:RefreshPreview()
   -- Caption tucks just below the construction (below the plate when it extends
   -- downward) so it never sits under the plate: bold state heading, body under it
   -- (an empty heading has zero height, so the default caption sits at the top).
+  -- (Stage 3: the caption keeps its fixed anchors from buildPreviewPane — the
+  -- mock's y, 20px insets. Only when a downward plate would reach it does it
+  -- drop under the construction.)
   if previewCaption and previewCaptionHead then
     local pane2 = previewFrame:GetParent()
+    local under = -PREVIEW_CENTER_Y + (previewFrame:GetHeight() or 104) / 2 + previewExtB + 26
+    local y = math.max(354, under)
     previewCaptionHead:ClearAllPoints()
-    previewCaptionHead:SetPoint("TOP", previewFrame, "BOTTOM", 0, -(previewExtB + 26))   -- breathing room under the construction (the owner)
-    previewCaptionHead:SetPoint("LEFT", pane2, "LEFT", 10, 0)
-    previewCaptionHead:SetPoint("RIGHT", pane2, "RIGHT", -10, 0)
-    previewCaption:ClearAllPoints()
-    previewCaption:SetPoint("TOP", previewCaptionHead, "BOTTOM", 0, -3)
-    previewCaption:SetPoint("LEFT", pane2, "LEFT", 10, 0)
-    previewCaption:SetPoint("RIGHT", pane2, "RIGHT", -10, 0)
-    if previewCaptionLinks then
-      previewCaptionLinks:ClearAllPoints()
-      previewCaptionLinks:SetPoint("TOP", previewCaption, "BOTTOM", 0, -8)
-      previewCaptionLinks:SetPoint("LEFT", pane2, "LEFT", 10, 0)
-      previewCaptionLinks:SetPoint("RIGHT", pane2, "RIGHT", -10, 0)
-    end
+    previewCaptionHead:SetPoint("TOPLEFT", pane2, "TOPLEFT", 20, -y)
+    previewCaptionHead:SetPoint("TOPRIGHT", pane2, "TOPRIGHT", -20, -y)
+
   end
 
   -- A plate texture created THIS frame hasn't rendered, so its first
@@ -2256,94 +1614,52 @@ local function animFmt(p)
 end
 
 -- One param control (from a module's schema). Returns { h, refresh, setEnabled, setShown }.
-local function animParamRow(bf, yTop, id, param, onChange)
+-- ★ STAGE 3 (2026-09-21): the Animations mock (`657:4328`), body-relative —
+-- "Glow State" over a 2 × 4 grid of state buttons; then the module's
+-- parameters by KIND: the colour chip beside the Animation picker (243, 92),
+-- a choice (Style) under the picker (50, 147), and every range / speed as a
+-- dial down the two right-hand columns (348 and 566, rows 92 and 147, then
+-- 784). A bispeed is a centred dial from -1 to 1 reading "still" / "CW 1.2s";
+-- its wider readout box takes the second row's LEFT slot (348, 147) so it
+-- never runs toward the pane's edge (the owner, 2026-09-21).
+local DIAL_SLOTS = { { 348, 92 }, { 566, 92 }, { 566, 147 }, { 784, 92 }, { 784, 147 } }
+local function animParam(bf, id, param, onChange, x, y)
+  local wd
   if param.kind == "color" then
-    local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 30, yTop); lab:SetText(param.label)
-    local cs = colorSwatch(bf, function() return animGet(id, param.key) end,
-      function(c) animSet(id, param.key, c); onChange() end,
-      nil, "Animation › " .. param.label)
-    cs.swatch:SetPoint("TOPRIGHT", -18, yTop + 1)
-    return { h = 30, refresh = function() cs:refresh() end,
-      setEnabled = function(on) cs.swatch:SetEnabled(on); cs.swatch:SetAlpha(on and 1 or 0.4); lab:SetAlpha(on and 1 or 0.4) end,
-      setShown = function(on) lab:SetShown(on); cs.swatch:SetShown(on) end }
+    wd = chipCell(bf, param.label == "Colour" and "Color" or param.label, {
+      get = function() return animGet(id, param.key) end,
+      set = function(c) animSet(id, param.key, c); onChange() end,
+      optional = true, label = "Bars › Animation › " .. param.label, title = param.label })
   elseif param.kind == "range" then
-    local row = sliderRow(bf, yTop, param.label, param.min, param.max, param.step,
-      function() return animGet(id, param.key) end,
-      function(v) animSet(id, param.key, v); onChange() end, animFmt(param))
-    return { h = 44, refresh = function() row:refresh() end, setEnabled = function(on) row:setEnabled(on) end,
-      setShown = function(on) row:SetShown(on) end }
+    local fmt = animFmt(param)
+    wd = UI.dial(bf, { label = param.label, min = param.min, max = param.max, step = param.step,
+      get = function() return animGet(id, param.key) end,
+      set = function(v) animSet(id, param.key, v); onChange() end, fmt = fmt })
   elseif param.kind == "bispeed" then
-    -- One signed slider: centre = still, right half = faster (posLabel), left half = faster
-    -- (negLabel). Value = velocity in [-1,1]; |v| = 1 is param.minRev sec/rev. Direction
-    -- labels default to CCW/CW (rotation) but a module can override (e.g. Sheen's L/R sweep).
     local minRev = param.minRev or 0.8
     local negLabel, posLabel = param.neg or "CCW", param.pos or "CW"
-    local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 30, yTop); lab:SetText(param.label)
-    local val = newText(bf, FONT.label, 11, TEXT, "RIGHT"); val:SetPoint("TOPRIGHT", -18, yTop)
-    local lccw = newText(bf, FONT.body, 9.5, MUTE, "LEFT"); lccw:SetPoint("TOPLEFT", 18, yTop - 32); lccw:SetText(negLabel)
-    local lcw = newText(bf, FONT.body, 9.5, MUTE, "RIGHT"); lcw:SetPoint("TOPRIGHT", -18, yTop - 32); lcw:SetText(posLabel)
-    local sl = CreateFrame("Slider", nil, bf)
-    sl:SetPoint("TOPLEFT", 18, yTop - 18); sl:SetPoint("TOPRIGHT", -18, yTop - 18); sl:SetHeight(16)
-    sl:EnableMouse(true); sl:SetOrientation("HORIZONTAL"); sl:SetMinMaxValues(-1, 1); sl:SetValueStep(0.05); sl:SetObeyStepOnDrag(true)
-    local track = sl:CreateTexture(nil, "BACKGROUND"); track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(6)
-    track:SetColorTexture(COLOR.heroic.r, COLOR.heroic.g, COLOR.heroic.b, 0.20)
-    local tick = sl:CreateTexture(nil, "ARTWORK"); tick:SetSize(2, 12); tick:SetPoint("CENTER"); tick:SetColorTexture(1, 1, 1, 0.28)
-    local thumb = sl:CreateTexture(nil, "ARTWORK"); thumb:SetColorTexture(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b, 1)
-    thumb:SetSize(5, 20); sl:SetThumbTexture(thumb)
-    local applying = false
-    local function show(v)
-      if math.abs(v) < 0.04 then val:SetText("still")
-      else val:SetText(string.format("%s %.1fs", v > 0 and posLabel or negLabel, minRev / math.abs(v))) end
-    end
-    sl:SetScript("OnValueChanged", function(_, v) if not applying then animSet(id, param.key, v); onChange() end; show(v) end)
-    local function seek(self)
-      local left, w = self:GetLeft(), self:GetWidth()
-      if not (left and w and w > 0) then return end
-      local frac = math.max(0, math.min(1, (GetCursorPosition() / self:GetEffectiveScale() - left) / w))
-      self:SetValue(math.floor((-1 + frac * 2) / 0.05 + 0.5) * 0.05)
-    end
-    sl:SetScript("OnMouseDown", function(self) if self:IsEnabled() then self._seek = true; seek(self) end end)
-    sl:SetScript("OnMouseUp", function(self) self._seek = false end)
-    sl:SetScript("OnUpdate", function(self)
-      if self._seek then if self:IsEnabled() and IsMouseButtonDown("LeftButton") then seek(self) else self._seek = false end end
-    end)
-    return { h = 50,
-      refresh = function() applying = true; local v = animGet(id, param.key) or 0; sl:SetValue(v); show(v); applying = false end,
-      setEnabled = function(on)
-        sl:SetEnabled(on); sl:SetAlpha(on and 1 or 0.35)
-        for _, t in ipairs({ lab, val, lccw, lcw }) do t:SetAlpha(on and 1 or 0.4) end
-      end,
-      setShown = function(on) for _, t in ipairs({ lab, val, lccw, lcw, sl }) do t:SetShown(on) end end }
+    wd = UI.dial(bf, { label = param.label, min = -1, max = 1, step = 0.05, centre = true,
+      get = function() return animGet(id, param.key) or 0 end,
+      set = function(v) animSet(id, param.key, v); onChange() end,
+      fmt = function(v)
+        if math.abs(v) < 0.04 then return "still" end
+        return string.format("%s %.1fs", v > 0 and posLabel or negLabel, minRev / math.abs(v))
+      end })
+    attachTip(wd.strip, param.label, ("Left of centre runs %s, right runs %s; further out is faster. The centre is still."):format(negLabel, posLabel))
   elseif param.kind == "choice" then
-    local lab = newText(bf, FONT.body, 12, TEXT, "LEFT"); lab:SetPoint("TOPLEFT", 30, yTop); lab:SetText(param.label)
-    local btns, prev = {}, nil
-    for i = #param.choices, 1, -1 do
-      local ch = param.choices[i]
-      local b = flatButton(bf, 46, 20, COLOR.heroic, ch[2], 11)
-      if prev then b:SetPoint("TOPRIGHT", prev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, yTop + 1) end
-      b:SetScript("OnClick", function() animSet(id, param.key, ch[1]); for _, e in ipairs(btns) do e.b:SetActive(e.v == ch[1]) end; onChange() end)
-      btns[#btns + 1] = { b = b, v = ch[1] }; prev = b
-    end
-    return { h = 28,
-      refresh = function() local cur = animGet(id, param.key); for _, e in ipairs(btns) do e.b:SetActive(e.v == cur) end end,
-      setEnabled = function(on) for _, e in ipairs(btns) do e.b:SetEnabled(on) end; lab:SetAlpha(on and 1 or 0.4) end,
-      setShown = function(on) lab:SetShown(on); for _, e in ipairs(btns) do e.b:SetShown(on) end end }
+    local opts = {}
+    for _, ch in ipairs(param.choices) do opts[#opts + 1] = { value = ch[1], label = ch[2] } end
+    wd = segCell(bf, param.label, opts, function() return animGet(id, param.key) end,
+      function(v) animSet(id, param.key, v); onChange() end)
+  else
+    return nil
   end
-  return { h = 0, refresh = function() end, setEnabled = function() end, setShown = function() end }
+  wd:SetPoint("TOPLEFT", x, -y)
+  return wd
 end
 
--- The dropdown (a flat button + orange caret opening a flyout of rows) is
--- LibGloomSkin's shared widget as of MINOR 3 (Phase E) — same signature as the
--- private copy it replaces, so every call site below is unchanged. Gloom's
--- Overlays drives its profile picker with the same one.
-local animDropdown = UI.dropdown
-
--- Animations section: State chips -> Animation dropdown (one per state, or None) -> the
--- selected animation's params. Params for each module are pre-built (hidden) at the same
--- spot; only the chosen module's set is shown. Each state's params are independent (they
--- read/write GB.db.triggers[animTrigger].anims[id]).
 local function buildAnimsSection(bf, s)
-  local chips, blocks, dd = {}, {}, nil
+  local blocks = {}
   local function apply() C:SetPreviewAnim(animTrigger); if GB.Anims then GB.Anims:Invalidate(animTrigger) end end
 
   local function currentSel()
@@ -2361,40 +1677,35 @@ local function buildAnimsSection(bf, s)
   end
   local function labelFor(v) if v == "none" or not v then return "None" end local m = GB.Anims and GB.Anims:Get(v); return (m and m.label) or "None" end
 
-  -- State chips (onClick assigned once selectTrigger exists, below).
-  local st = newText(bf, FONT.body, 11, MUTE, "LEFT"); st:SetPoint("TOPLEFT", 18, -12); st:SetText("State")
-  local cx, cy = 18, -30
+  local st = UI.label(bf, "Glow State"); st:SetPoint("TOPLEFT", 50, 0)
+  local chips = {}
   for i, tr in ipairs(ANIM_TRIGGERS) do
-    local b = flatButton(bf, 58, 20, COLOR.heroic, tr[2], 11); b:SetPoint("TOPLEFT", cx, cy)
+    local col, row = (i - 1) % 4, math.floor((i - 1) / 4)
+    local b = UI.button(bf, tr[2], { kind = "action", w = 102 })   -- the mock: 102 wide, 112 apart, rows 27 apart, dark
+    b:SetPoint("TOPLEFT", 50 + col * 112, -(18 + row * 27))
     chips[#chips + 1] = { b = b, k = tr[1] }
-    cx = cx + 62; if i == 4 then cx, cy = 18, cy - 24 end
   end
 
-  local ddLab = newText(bf, FONT.body, 12, TEXT, "LEFT"); ddLab:SetPoint("TOPLEFT", 18, -84); ddLab:SetText("Animation")
-
-  -- Param blocks (one per module), all anchored at PARAM_Y, hidden until selected. Each
-  -- records its own bottom so the section can size to JUST the selected module.
-  local PARAM_Y = -118
+  -- the module blocks: each module's params at the slots above
   if GB.Anims then
     GB.Anims:Each(function(mod)
-      local prs, y = {}, PARAM_Y
-      for _, param in ipairs(mod.params) do local pr = animParamRow(bf, y, mod.id, param, apply); prs[#prs + 1] = pr; y = y - pr.h end
+      local prs, slot = {}, 1
+      for _, param in ipairs(mod.params) do
+        local x, y
+        if param.kind == "color" then x, y = 243, 92
+        elseif param.kind == "choice" then x, y = 50, 147
+        elseif param.kind == "bispeed" then x, y = 348, 147
+        else local sl = DIAL_SLOTS[slot] or DIAL_SLOTS[#DIAL_SLOTS]; x, y = sl[1], sl[2]; slot = slot + 1 end
+        local pr = animParam(bf, mod.id, param, apply, x, y)
+        if pr then prs[#prs + 1] = pr end
+      end
       blocks[mod.id] = {
-        bottom = y,
-        setShown = function(on) for _, pr in ipairs(prs) do pr.setShown(on) end end,
-        refresh = function() for _, pr in ipairs(prs) do pr.refresh(); pr.setEnabled(true) end end,
+        setShown = function(on) for _, pr in ipairs(prs) do pr:SetShown(on) end end,
+        refresh = function() for _, pr in ipairs(prs) do pr:refresh() end end,
       }
       blocks[mod.id].setShown(false)
     end)
   end
-
-  -- Size the section to the SELECTED module's params (None → tight under the dropdown), then
-  -- reflow the accordion — no dead space below a short module (was fixed to the tallest one).
-  local function heightFor(id)
-    local blk = blocks[id]
-    return -((blk and blk.bottom) or (PARAM_Y + 8)) + 16
-  end
-  local function setSectionHeight(id) bf:SetHeight(heightFor(id)); relayout() end
 
   local function selectAnim(v)
     local t = GB.db and GB.db.triggers and GB.db.triggers[animTrigger]
@@ -2406,162 +1717,143 @@ local function buildAnimsSection(bf, s)
     end) end
     for id, blk in pairs(blocks) do blk.setShown(id == v) end
     if blocks[v] then blocks[v].refresh() end
-    setSectionHeight(v)
     apply()
   end
-
-  dd = animDropdown(bf, 168, function() return labelFor(currentSel()) end, options, currentSel, selectAnim)
-  dd:SetPoint("TOPRIGHT", -18, -84)
+  local dd = UI.cell(bf, "Animation", function(c)   -- the mock draws it as the white field picker
+    return UI.pick(c, 163, function() return labelFor(currentSel()) end, options, currentSel, selectAnim, { kind = "field" })
+  end)
+  dd:SetPoint("TOPLEFT", 50, -92)
+  bf:SetHeight(190)
 
   local function refreshForTrigger()
     dd:refresh()
     local cur = currentSel()
     for id, blk in pairs(blocks) do blk.setShown(id == cur) end
     if blocks[cur] then blocks[cur].refresh() end
-    setSectionHeight(cur)
     C:SetPreviewAnim(animTrigger)
   end
   local function selectTrigger(k) animTrigger = k; for _, c in ipairs(chips) do c.b:SetActive(c.k == k) end; refreshForTrigger() end
   for _, c in ipairs(chips) do c.b:SetScript("OnClick", function() selectTrigger(c.k) end) end
 
-  bf:SetHeight(heightFor(currentSel()))   -- initial; runtime changes go through setSectionHeight
   s.refresh = function()
     for _, c in ipairs(chips) do c.b:SetActive(c.k == animTrigger) end
     refreshForTrigger()
   end
 end
 
--- Profiles — profile picker (per-character active, account-wide library) +
--- preset picker (the whole-look every section below edits). Presets AUTO-SAVE:
--- the edit preset is a live document — switching preset/profile snapshots the
--- outgoing look first (Core SwitchPreset/SetActiveProfile), logout too — so
--- there is no Save button. Per-bar assignment arrives with Apply to bars.
--- Left rail (session 14): profile + preset selection, ALWAYS visible.
--- Replaced the old "Profiles" accordion section — the profile and preset decide
--- what every other control edits, so they live outside the accordion, never
--- hidden. Management (new/copy/rename/delete) lives here too.
+local function sortedNames(t)
+  local o = {}
+  for name in pairs(t or {}) do o[#o + 1] = name end
+  table.sort(o)
+  return o
+end
+local function editName() local prof = GB:ActiveProfile(); return (prof and prof.edit) or "?" end
+
+-- The PROFILE api: the Suite window draws it as the footer profile row
+-- (RegisterTab `profile`, LibGloomSkin MINOR 11) — the same mechanism every
+-- tool uses (the owner, 2026-07-24), same dialogs, same delete gate.
+local PROFILE_API = {
+  noun   = "profile",
+  names  = function() return sortedNames(GB.db and GB.db.profiles) end,
+  active = function() return GB:ActiveProfileName() or "?" end,
+  switch = function(v) GB:SetActiveProfile(v) end,
+  users  = function(name)
+    local o = {}
+    for char, p in pairs((GB.db and GB.db.charProfiles) or {}) do if p == name then o[#o + 1] = char end end
+    return o
+  end,
+  create = function(name)
+    if not GB:CreateProfile(name) then return false, "A profile with that name already exists." end
+    GB:SetActiveProfile(name); return true
+  end,
+  copy = function(name)
+    if not GB:CopyProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
+    GB:SetActiveProfile(name); return true
+  end,
+  rename = function(name)
+    if not GB:RenameProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
+    return true
+  end,
+  delete = function()
+    local gone = GB:ActiveProfileName()
+    local ok, landedOn = GB:DeleteProfile(gone)
+    if not ok then return false, "Can't delete the last profile." end
+    -- Say where this character went. The fallback is arbitrary (Core picks it
+    -- with `next`), so silence here left you on some other profile with no clue
+    -- which. The note line is cleared on success, so this goes to chat.
+    GB.msg(("deleted profile |cffffffff%s|r — this character is now on |cffffffff%s|r.")
+      :format(gone, tostring(landedOn)))
+    return true
+  end,
+  onChange = function() C:Refresh() end,
+  tips = {
+    dropdown = "The active profile for this character. Each character remembers its own; the profile library is shared account-wide.",
+    new      = "Creates a profile with the default look, and switches to it. To start from THIS look instead, use Copy.",
+    copy     = "Duplicates this profile — presets, bar assignments and all — and switches to the copy.",
+    rename   = "Renames this profile. Characters using it follow the new name.",
+    delete   = "Deletes this profile (you'll be asked to confirm). Characters using it fall back to another profile. The last profile can't be deleted.",
+  },
+}
+
+-- The rail's PRESET block (stage 3, the Shape mock): "Preset (Being Edited)"
+-- on a faint 250 × 120 plate — a white 210px picker, then NEW · COPY / RENAME
+-- · DELETE (amber) in two rows of 102. Same dialogs and delete gate as the
+-- profile row: the kit's profileRow drives it, laid out 2 × 2 here.
 local function buildRailPane(parent)
   local rail = CreateFrame("Frame", nil, parent)
-  rail:SetPoint("TOPLEFT", 0, 0)
-  rail:SetPoint("BOTTOMLEFT", 0, FOOTER_H)
-  rail:SetWidth(RAIL_W)
+  rail:SetPoint("TOPLEFT", 0, 0); rail:SetSize(RAIL_W, RAIL_TOP_H)
+  local plate = rail:CreateTexture(nil, "BACKGROUND"); plate:SetAllPoints(); UI.tint(plate, COLOR.faint)
 
-  local function sortedNames(t)
-    local o = {}
-    for name in pairs(t or {}) do o[#o + 1] = name end
-    table.sort(o)
-    return o
-  end
-  local function editName() local prof = GB:ActiveProfile(); return (prof and prof.edit) or "?" end
-
-  local X, W = 14, RAIL_W - 28   -- content column inset + width
-
-  -- The Gb mark + wordmark (LibGloomSkin MINOR 4). Bars was the ONE tab with no
-  -- header at all — its rail opened straight onto PROFILE while Overlays led
-  -- with its mark. Everything below is therefore anchored 48px lower than it
-  -- was, which is exactly the header's height (divider at -48).
-  UI.tabHeader(rail, {
-    texture = "Interface\\AddOns\\GloomsBars\\Media\\ui\\logo.png",
-    label   = "GLOOM'S BARS",
-    x       = X,
-  })
-
-  -- PROFILE and PRESET both drive LibGloomSkin's shared profileBlock (MINOR 3):
-  -- header + dropdown + New/Copy/Rename/Delete + an inline note line. The owner,
-  -- 2026-07-24: this mechanism must be IDENTICAL across the suite, so GB, GA and
-  -- Overlays all use this one control. It also retires GB's two-click "Sure?"
-  -- delete — once armed there was no way to back out short of closing the addon;
-  -- deletes now go through the shared confirm modal, which has a Cancel.
-  local profBlock = UI.profileBlock(rail, W, {
-    noun   = "profile",
-    names  = function() return sortedNames(GB.db and GB.db.profiles) end,
-    active = function() return GB:ActiveProfileName() or "?" end,
-    switch = function(v) GB:SetActiveProfile(v) end,
-    users  = function(name)
-      local o = {}
-      for char, p in pairs((GB.db and GB.db.charProfiles) or {}) do if p == name then o[#o + 1] = char end end
+  local title = UI.label(rail, "Preset (Being Edited)"); title:SetPoint("TOPLEFT", 20, -18)
+  local pick = UI.pick(rail, 210,
+    editName,
+    function()
+      local prof = GB:ActiveProfile(); local o = {}
+      for _, n in ipairs(sortedNames(prof and prof.presets)) do o[#o + 1] = { label = n, value = n } end
       return o
     end,
-    create = function(name)
-      if not GB:CreateProfile(name) then return false, "A profile with that name already exists." end
-      GB:SetActiveProfile(name); return true
-    end,
-    copy = function(name)
-      if not GB:CopyProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
-      GB:SetActiveProfile(name); return true
-    end,
-    rename = function(name)
-      if not GB:RenameProfile(GB:ActiveProfileName(), name) then return false, "A profile with that name already exists." end
-      return true
-    end,
-    delete = function()
-      local gone = GB:ActiveProfileName()
-      local ok, landedOn = GB:DeleteProfile(gone)
-      if not ok then return false, "Can't delete the last profile." end
-      -- Say where this character went. The fallback is arbitrary (Core picks it
-      -- with `next`), so silence here left you on some other profile with no clue
-      -- which. The note line is cleared on success, so this goes to chat.
-      GB.msg(("deleted profile |cffffffff%s|r — this character is now on |cffffffff%s|r.")
-        :format(gone, tostring(landedOn)))
-      return true
-    end,
-    onChange = function() C:Refresh() end,
-    tips = {
-      dropdown = "The active profile for this character. Each character remembers its own; the profile library is shared account-wide.",
-      new      = "Creates a profile with the default look, and switches to it. To start from THIS look instead, use Copy.",
-      copy     = "Duplicates this profile — presets, bar assignments and all — and switches to the copy.",
-      rename   = "Renames this profile. Characters using it follow the new name.",
-      delete   = "Deletes this profile (you'll be asked to confirm). Characters using it fall back to another profile. The last profile can't be deleted.",
-    },
-  })
-  profBlock.frame:SetPoint("TOPLEFT", X, -60)
+    editName,
+    function(v) GB:SwitchPreset(v); C:Refresh() end,
+    { kind = "field" })
+  pick:SetPoint("TOPLEFT", 20, -34)
+  attachTip(pick, "Preset being edited", "The look being edited — every control in the accordion edits this preset, and it saves automatically as you edit. Picking another preset swaps the whole look.")
 
-  -- PRESET block (the edit target). No Copy — "New preset" already starts from
-  -- the current look — so the shared block lays its buttons out 3-across.
-  --
-  -- ★ Pinned to the BOTTOM of the rail and drawn in ORANGE, not purple (the owner,
-  -- 2026-08-15). Stacked directly under PROFILE in the same colour, the two blocks
-  -- were the same control twice and it was genuinely hard to tell which scope a
-  -- button belonged to. Separating them by position AND colour is what makes the
-  -- profile/preset distinction readable at a glance.
-  local presetBlock = UI.profileBlock(rail, W, {
-    noun   = "preset",
-    title  = "PRESET (BEING EDITED)",
-    accent = COLOR.orange,
-    names  = function() local prof = GB:ActiveProfile(); return sortedNames(prof and prof.presets) end,
-    active = editName,
-    switch = function(v) GB:SwitchPreset(v) end,
-    create = function(name)
-      if not GB:CreatePreset(name) then return false, "A preset with that name already exists." end
-      return true
-    end,
-    rename = function(name)
-      if not GB:RenamePreset(editName(), name) then return false, "A preset with that name already exists." end
-      return true
-    end,
-    delete = function()
-      if not GB:DeletePreset(editName()) then return false, "Can't delete the last preset." end
-      return true
-    end,
-    onChange = function() C:Refresh() end,
-    tips = {
-      dropdown = "The look being edited — every control in the middle panel edits this preset, and it saves automatically as you edit. Picking another preset swaps the whole look.",
-      -- No Copy button by design: CreatePreset (Core.lua) snapshots the current
-      -- look, so New IS copy-current and a Copy button would duplicate it.
-      new      = "Creates a preset starting as a copy of the current look, and makes it the one being edited. (This is why there's no separate Copy — New already copies.)",
-      rename   = "Renames this preset. Bars assigned to it follow the new name.",
-      delete   = "Deletes this preset (you'll be asked to confirm). Bars assigned to it fall back to another preset. The last preset can't be deleted.",
-    },
-  })
-  presetBlock.frame:SetPoint("BOTTOMLEFT", X, 18)
-  -- Divider sits just above it, so the rail reads: profile at the top, the look
-  -- being edited at the bottom, empty space between them.
-  local divY = 18 + presetBlock.height + 16
-  local div = hLine(rail)
-  div:SetPoint("BOTTOMLEFT", X, divY); div:SetPoint("BOTTOMRIGHT", -X, divY)
+  -- nameDialog ignores the callback's return; a refused name is said in chat.
+  local function collision() GB.msg("a preset with that name already exists.") end
+  local function newBtn(label, kind, x, y, onClick, tipT, tipB)
+    local bt = UI.button(rail, label, { kind = kind, w = 102, onClick = onClick })
+    bt:SetPoint("TOPLEFT", x, y); attachTip(bt, tipT, tipB); return bt
+  end
+  newBtn("New", "action", 20, -63, function()
+    UI.nameDialog("New preset", "", function(name)
+      if not name or name == "" then return end
+      if not GB:CreatePreset(name) then return collision() end
+      C:Refresh()
+    end)
+  end, "New preset", "Creates a preset starting as a copy of the current look, and makes it the one being edited.")
+  newBtn("Copy", "action", 128, -63, function()
+    UI.nameDialog("Copy preset", editName() .. " copy", function(name)
+      if not name or name == "" then return end
+      if not GB:CreatePreset(name) then return collision() end
+      C:Refresh()
+    end)
+  end, "Copy preset", "A duplicate of the current look under a new name, which becomes the one being edited.")
+  newBtn("Rename", "action", 20, -86, function()
+    UI.nameDialog("Rename preset", editName(), function(name)
+      if not name or name == "" then return end
+      if not GB:RenamePreset(editName(), name) then return collision() end
+      C:Refresh()
+    end)
+  end, "Rename preset", "Renames this preset. Bars assigned to it follow the new name.")
+  newBtn("Delete", "warn", 128, -86, function()
+    UI.confirm(("Delete the preset \"%s\"? Bars assigned to it fall back to another preset."):format(editName()), function()
+      if not GB:DeletePreset(editName()) then GB.msg("can't delete the last preset.") end
+      C:Refresh()
+    end, "Delete", "Delete preset")
+  end, "Delete preset", "Deletes this preset (you'll be asked to confirm). The last preset can't be deleted.")
 
   local railRefresh = function()
-    profBlock:refresh(); presetBlock:refresh()
+    pick:refresh()
     -- Re-point the preset-focus highlight at the newly-selected edit preset's bars
     -- (no-op if the highlight is off).
     if GB.Skin and GB.Skin.RefreshPresetHighlight then GB.Skin:RefreshPresetHighlight() end
@@ -2586,48 +1878,40 @@ end
 local function layoutOn() local prof = GB:ActiveProfile(); return (prof and prof.layoutEnabled) or false end
 
 local function buildLayoutSection(bf, s)
+  -- ★ STAGE 3 (2026-09-21): the Bar Layout & Preset mock (`660:5304`), body-
+  -- relative. The two controls the mocks give no home — the master ENABLE and
+  -- the preset HIGHLIGHT — sit here too (the assistant's placement, flagged).
   local selBar = GB.BARS[1].buttonPrefix
   local chips = {}
+  local w = {}
   local selectBar   -- fwd-declared
 
   local function data() return barLayoutData(selBar) end
   local function apply() if GB.Layout then GB.Layout:Reassert(selBar) end end
 
-  -- THE master switch (the owner: all-or-nothing — when on, this addon arranges
-  -- ALL the bars with the per-bar settings below; when off, Edit Mode does).
-  local olab = newText(bf, FONT.body, 12, TEXT, "LEFT"); olab:SetPoint("TOPLEFT", 18, -14); olab:SetText("Gloom's Bars layout")
-  local own = makeToggle(bf, layoutOn,
+  -- ROW 0: Layout Control · Now Editing Bar: the ten chips · Gloom's Bars (enable)
+  w.own = at(toggleCell(bf, "Layout Control", layoutOn,
     function(v)
       local prof = GB:ActiveProfile(); if prof then prof.layoutEnabled = v and true or false end
       if GB.Layout then GB.Layout:ApplyAll() end
-      -- Turning layout OFF must also release the empty-slot collapse (see
-      -- collapseEmpty) — that lives on the alpha path, not in ApplyAll.
       if GB.Skin and GB.Skin.RefreshEmptySlots then GB.Skin:RefreshEmptySlots() end
       s.refresh()
-    end)
-  own:SetPoint("TOPRIGHT", -18, -12)
-  attachTip(own, "Gloom's Bars layout", "On: this addon arranges ALL the bars, each with its settings below. Off: Edit Mode arranges everything, exactly as normal.")
-
-  -- Bar chips (4-wide grid; 10 bars = 3 rows), pinging the real bar on hover
-  -- (same QoL as Apply to bars). Numbered bars show "Bar N"; pet/stance show
-  -- their name (they're bars 9-10 in GB.BARS but "Bar 9/10" would be wrong).
-  local CHIP_ROWS = math.ceil(#GB.BARS / 4)
-  for i, bar in ipairs(GB.BARS) do
-    local col, row = (i - 1) % 4, math.floor((i - 1) / 4)
+    end), 50, 0)
+  attachTip(w.own.control, "Layout control", "On: this addon arranges ALL the bars, each with its settings below. Off: Edit Mode arranges everything, exactly as normal.")
+  local nel = UI.label(bf, "Now Editing Bar:"); nel:SetPoint("TOPLEFT", 188, 0)
+  local prev
+  for _, bar in ipairs(GB.BARS) do
     local label = bar.key:match("^bar(%d+)$") and ("Bar " .. bar.key:match("^bar(%d+)$")) or bar.label:gsub(" Bar$", "")
-    local chip = flatButton(bf, 82, 22, COLOR.heroic, label, 11); chip:SetBase(0.2)
-    chip:SetPoint("TOPLEFT", 18 + col * 88, -44 - row * 26)
-    chip:SetScript("OnClick", function() selectBar(bar.buttonPrefix) end)
+    local chip = UI.button(bf, label, { kind = "action", padX = 6, onClick = function() selectBar(bar.buttonPrefix) end })   -- the mock's 47px "BAR 1", dark
+    if prev then chip:SetPoint("LEFT", prev, "RIGHT", 6, 0) else chip:SetPoint("TOPLEFT", 188, -18) end
     chip:HookScript("OnEnter", function() if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(bar.buttonPrefix, true) end end)
     chip:HookScript("OnLeave", function() if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(bar.buttonPrefix, false) end end)
     attachTip(chip, bar.label, "Select this bar to edit its layout settings. Hovering pulses it on screen.")
     chips[#chips + 1] = { b = chip, k = bar.buttonPrefix }
+    prev = chip
   end
 
-  -- Visibility (the owner: "I don't use all 8 bars" + Edit Mode's conditional
-  -- modes): Default = Blizzard's rules; Always visible forces a bar Edit Mode
-  -- disabled to appear; In/Out of combat use a secure state driver (the only
-  -- legal way to flip a bar at combat edges); Hidden removes it.
+  -- ROW 1: Style Preset · Visibility Rule · Empty Icons · Copy Layout From
   local VIS_OPTS = {
     { value = "default",  label = "Default" },
     { value = "show",     label = "Always Visible" },
@@ -2641,246 +1925,158 @@ local function buildLayoutSection(bf, s)
     for _, o in ipairs(VIS_OPTS) do if o.value == v then return o.label end end
     return "Default"
   end
-  -- Content below the chip grid is shifted down by the extra chip row (10 bars
-  -- = 3 rows now that pet/stance are members, vs the 2 rows this section was
-  -- laid out for) PLUS the Preset dropdown row folded in from the old "Apply to
-  -- bars" section (the owner: assign a preset to the selected bar right here — no
-  -- separate section). BY threads the shift through every fixed offset + reflow.
-  local PRESET_ROW = 32
-  local baseBY = (CHIP_ROWS - 2) * 26
-  local BY = baseBY + PRESET_ROW
-
-  -- Preset (folded in from "Apply to bars"): which whole-look preset the SELECTED
-  -- bar wears. Sits in the row freed above Visibility (at the old pre-preset BY).
   local function presetOptions()
     local prof = GB:ActiveProfile(); local o = {}
     for name in pairs((prof and prof.presets) or {}) do o[#o + 1] = { value = name, label = name } end
-    table.sort(o, function(a, b) return a.label < b.label end)
+    table.sort(o, function(a2, b2) return a2.label < b2.label end)
     return o
   end
-  local plab = newText(bf, FONT.body, 12, TEXT, "LEFT"); plab:SetPoint("TOPLEFT", 18, -106 - baseBY); plab:SetText("Preset")
-  local presetdd = animDropdown(bf, 150,
+  local function barName() for _, bar in ipairs(GB.BARS) do if bar.buttonPrefix == selBar then return bar.label end end return "" end
+  w.preset = at(pickCell(bf, "Style Preset", 170,
     function() local prof = GB:ActiveProfile(); return (prof and prof.bars and prof.bars[selBar]) or "?" end,
     presetOptions,
     function() local prof = GB:ActiveProfile(); return prof and prof.bars and prof.bars[selBar] end,
-    function(v) GB:AssignBarPreset(selBar, v); s.refresh() end)
-  presetdd:SetPoint("TOPRIGHT", -18, -104 - baseBY)
-  attachTip(presetdd, "Preset", "Which whole-look preset the selected bar wears. The preset being edited renders live as you tweak it; any other preset shows its saved look. Flyouts follow the bar they pop from.")
-  -- Pulse the selected bar on screen while the Preset row is hovered / its list is
-  -- open (the same QoL the old "Apply to bars" grid had, now keyed to selBar).
-  presetdd:HookScript("OnEnter", function() if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(selBar, true) end end)
-  presetdd:HookScript("OnLeave", function()
-    local fly = UI.flyout()
-    -- IsVisible, not IsShown: the flyout is a child of the click-catcher and is
-    -- only ever hidden VIA that parent, so its own shown flag stays true.
-    if fly:IsVisible() and fly.gbPingBar == selBar then return end
-    if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(selBar, false) end
-  end)
-  presetdd:HookScript("OnClick", function()
-    local fly = UI.flyout()
-    if not fly:IsVisible() then return end
-    if fly.gbPingBar and fly.gbPingBar ~= selBar and GB.Skin then
-      GB.Skin:PingBar(fly.gbPingBar, false)   -- a different bar was selected when last opened
-    end
-    fly.gbPingBar = selBar
-    if not fly.gbPingHooked then
-      fly.gbPingHooked = true
-      fly:HookScript("OnHide", function(f)
-        if f.gbPingBar and GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(f.gbPingBar, false) end
-        f.gbPingBar = nil
-      end)
-    end
-  end)
-
-  local vlab = newText(bf, FONT.body, 12, TEXT, "LEFT"); vlab:SetPoint("TOPLEFT", 18, -106 - BY); vlab:SetText("Visibility")
-  local visdd = animDropdown(bf, 150, visLabel,
-    function() return VIS_OPTS end,
-    visValue,
+    function(v) GB:AssignBarPreset(selBar, v); s.refresh() end), 50, 55)
+  attachTip(w.preset.control, "Style preset", "Which whole-look preset the selected bar wears. The preset being edited renders live as you tweak it; any other preset shows its saved look. Flyouts follow the bar they pop from.")
+  w.vis = at(pickCell(bf, "Visibility Rule", 150, visLabel, function() return VIS_OPTS end, visValue,
     function(v)
       local c = ensureBarLayout(selBar)
       c.vis = (v ~= "default") and v or nil
       apply(); s.refresh()
-    end)
-  visdd:SetPoint("TOPRIGHT", -18, -104 - BY)
-  attachTip(visdd, "Visibility", "Default follows Blizzard's rules (Edit Mode, mouseover, vehicles). Always visible shows the bar even if Edit Mode has it disabled. In/Out of combat show it only then. Hidden removes it. Game-driven hides always win.")
-
-  -- Empty buttons (the owner, borrowed from Edit Mode's Always Show Buttons):
-  -- Shown = Blizzard's rules + the skin's Empty-slots treatment; Hidden =
-  -- action-less buttons collapse entirely (their grid slot stays — a hole,
-  -- not a shuffle; drag a spell and they reappear as drop targets).
-  local elab = newText(bf, FONT.body, 12, TEXT, "LEFT"); elab:SetPoint("TOPLEFT", 18, -136 - BY); elab:SetText("Empty buttons")
-  local emBtns, emPrev = {}, nil
-  for i = 2, 1, -1 do
-    local ec = ({ { true, "Shown" }, { false, "Hidden" } })[i]
-    local b = flatButton(bf, 60, 22, COLOR.heroic, ec[2], 11)
-    if emPrev then b:SetPoint("TOPRIGHT", emPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -134 - BY) end
-    b:SetScript("OnClick", function()
+    end), 250, 55)
+  attachTip(w.vis.control, "Visibility", "Default follows Blizzard's rules (Edit Mode, mouseover, vehicles). Always Visible shows the bar even if Edit Mode has it disabled. In / Out of Combat show it only then. Hidden removes it. Game-driven hides always win.")
+  w.empty = at(segCell(bf, "Empty Icons", { { value = true, label = "Show" }, { value = false, label = "Hide" } },
+    function() local c = data(); return not (c and c.showEmpty == false) end,
+    function(v)
       local c = ensureBarLayout(selBar)
-      -- NOT `x and false or nil` — that idiom can never yield false (the
-      -- `or` eats it), which silently wrote Default here (the owner's bug).
-      if ec[1] then c.showEmpty = nil else c.showEmpty = false end
-      for _, e in ipairs(emBtns) do e.b:SetActive(e.v == ec[1]) end
-      -- The collapse is an ALPHA treatment in Skin now, and apply() -> Reassert
-      -- gates on combat, so the refresh cannot ride along with it.
+      if v then c.showEmpty = nil else c.showEmpty = false end
       if GB.Skin and GB.Skin.RefreshEmptySlots then GB.Skin:RefreshEmptySlots() end
       apply()
-    end)
-    emBtns[#emBtns + 1] = { b = b, v = ec[1] }; emPrev = b
-  end
-  attachTip(emBtns[2].b, "Shown", "Empty slots render normally — Blizzard's rules plus the Empty slots section's treatment.")
-  attachTip(emBtns[1].b, "Hidden", "Buttons with no action disappear entirely. Their spot in the grid stays reserved, and they reappear while you drag a spell.")
-
-  -- Copy another bar's whole layout onto this one (the owner: styling 8 bars one
-  -- by one is a chore — tune one, copy it around).
-  local cplab = newText(bf, FONT.body, 12, TEXT, "LEFT"); cplab:SetPoint("TOPLEFT", 18, -164 - BY); cplab:SetText("Copy layout from")
-  local cpdd = animDropdown(bf, 150,
-    function() return "Pick a bar…" end,
-    function()
-      local o = {}
-      for i, bar in ipairs(GB.BARS) do
-        if bar.buttonPrefix ~= selBar then o[#o + 1] = { value = bar.buttonPrefix, label = bar.label } end
-      end
-      return o
-    end,
-    function() return nil end,
-    function(v)
-      local src = barLayoutData(v)
-      if not src then return end
-      -- Copy the ARRANGEMENT only — size, gap, rows, row gap, orientation
-      -- (the owner). Never position (that literally stacks two bars on one spot);
-      -- visibility, button count and empty-button settings stay per-bar too.
-      local dst = ensureBarLayout(selBar)
-      if not dst then return end
-      dst.size, dst.gap, dst.rows = src.size, src.gap, src.rows
-      dst.gapCross, dst.horizontal = src.gapCross, src.horizontal
-      apply(); s.refresh()
-    end)
-  cpdd:SetPoint("TOPRIGHT", -18, -162 - BY)
-  attachTip(cpdd, "Copy layout", "Copies the picked bar's arrangement — button size, gap, rows, row gap, orientation — onto the selected bar. Its position, visibility, button count and empty-button settings stay as they are.")
-
-  local sizeRow = sliderRow(bf, -194 - BY, "Button size", 24, 64, 1,
-    function() local c = data(); return (c and c.size) or 45 end,
-    function(v) local c = ensureBarLayout(selBar); c.size = v; apply() end,
-    function(v) return v .. "px" end)
-  local gapRow = sliderRow(bf, -238 - BY, "Gap", -32, 64, 1,
-    function() local c = data(); return (c and c.gap) or 4 end,
-    function(v) local c = ensureBarLayout(selBar); c.gap = v; apply() end,
-    function(v) return v .. "px" end)
-  local rowsRow = sliderRow(bf, -282 - BY, "Rows", 1, 6, 1,
-    function() local c = data(); return (c and c.rows) or 1 end,
-    function(v) local c = ensureBarLayout(selBar); c.rows = v; apply(); s.refresh() end,   -- refresh: Row gap shows at rows > 1
-    function(v) return tostring(v) end)
-  local cntRow = sliderRow(bf, -326 - BY, "Buttons", 1, 12, 1,
-    function() local c = data(); return (c and c.count) or 12 end,
-    function(v) local c = ensureBarLayout(selBar); c.count = v; apply() end,
-    function(v) return tostring(v) end)
-
-  -- Orientation base y (shifted by BY); Row gap slides it further when rows > 1.
-  local dlab = newText(bf, FONT.body, 12, TEXT, "LEFT"); dlab:SetPoint("TOPLEFT", 18, -374 - BY); dlab:SetText("Orientation")
-  local orBtns, orPrev = {}, nil
-  for i = 2, 1, -1 do
-    local oc = ({ { true, "Horizontal" }, { false, "Vertical" } })[i]
-    local b = flatButton(bf, 80, 22, COLOR.heroic, oc[2], 11)
-    if orPrev then b:SetPoint("TOPRIGHT", orPrev, "TOPLEFT", -4, 0) else b:SetPoint("TOPRIGHT", -18, -372 - BY) end
-    b:SetScript("OnClick", function()
-      local c = ensureBarLayout(selBar); c.horizontal = oc[1]
-      for _, e in ipairs(orBtns) do e.b:SetActive(e.h == c.horizontal) end; apply()
-    end)
-    orBtns[#orBtns + 1] = { b = b, h = oc[1] }; orPrev = b
-  end
-
-  -- Cross-axis gap — between rows (columns on a vertical bar). Only shown when
-  -- the bar folds into more than one row (the owner's rule); defaults to Gap. Sits
-  -- ABOVE Orientation (the owner), which slides down to make room when it shows.
-  local rgRow = sliderRow(bf, -370 - BY, "Row gap", -32, 64, 1,
-    function() local c = data(); return (c and (c.gapCross or c.gap)) or 4 end,
-    function(v) local c = ensureBarLayout(selBar); c.gapCross = v; apply() end,
-    function(v) return v .. "px" end)
-
-  -- Position (phase L3): move mode + per-bar reset. Both need the master
-  -- switch on (position is part of the layout the addon owns).
-  local mvBtn = flatButton(bf, 110, 22, COLOR.purple, "Move Bars", 11)
-  mvBtn:SetPoint("TOPLEFT", 18, -436)
-  mvBtn:SetScript("OnClick", function()
-    if GB.Layout then GB.Layout:SetMoveMode(not GB.Layout:MoveModeOn()) end
+    end, { padX = 10 }), 430, 55)   -- the mock's 98px bar
+  attachTip(w.empty.control, "Empty icons", "Show: empty slots render normally — Blizzard's rules plus the Empty Slots section's treatment. Hide: buttons with no action disappear entirely; their spot in the grid stays reserved, and they reappear while you drag a spell.")
+  w.copy = UI.cell(bf, "Copy Layout From", function(c)
+    return UI.pick(c, 210, function() return "Pick a Bar" end,
+      function()
+        local o = {}
+        for _, bar in ipairs(GB.BARS) do
+          if bar.buttonPrefix ~= selBar then o[#o + 1] = { value = bar.buttonPrefix, label = bar.label } end
+        end
+        return o
+      end,
+      function() return nil end,
+      function(v)
+        local src = barLayoutData(v)
+        if not src then return end
+        local dst = ensureBarLayout(selBar)
+        if not dst then return end
+        dst.size, dst.gap, dst.rows = src.size, src.gap, src.rows
+        dst.gapCross, dst.horizontal = src.gapCross, src.horizontal
+        apply(); s.refresh()
+      end, { kind = "field" })
   end)
-  attachTip(mvBtn, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
-  -- Quick keybind (phase L4, the last layout-scope item): launches Blizzard's
-  -- own quick-bind flow — hover a button, press a key. Same entry the
-  -- Settings panel uses (close the open panel, then Show). Not gated on the
-  -- master switch: keybinding isn't layout.
-  local qkBtn = flatButton(bf, 110, 22, COLOR.heroic, "Quick Keybind", 11)
-  qkBtn:SetPoint("LEFT", mvBtn, "RIGHT", 8, 0)
-  qkBtn:SetScript("OnClick", openQuickKeybind)
-  attachTip(qkBtn, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
-  local rsBtn = flatButton(bf, 130, 22, COLOR.heroic, "Reset Position", 11)
-  rsBtn:SetPoint("TOPRIGHT", -18, -436)
-  rsBtn:SetScript("OnClick", function() if GB.Layout then GB.Layout:ResetPosition(selBar) end end)
-  attachTip(rsBtn, "Reset Position", "Returns the selected bar to wherever Edit Mode places it.")
+  w.copy:SetPoint("TOPLEFT", 559, -55)
+  attachTip(w.copy.control, "Copy layout", "Copies the picked bar's arrangement — button size, gap, rows, row gap, orientation — onto the selected bar. Its position, visibility, button count and empty-button settings stay as they are.")
 
-  local hint = newText(bf, FONT.body, 11, MUTE, "LEFT")
-  hint:SetPoint("TOPLEFT", 18, -406); hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0); hint:SetJustifyH("LEFT")
-  hint:SetText("Button size scales the WHOLE button proportionally — icon, text, glows — like Edit Mode's size setting. How the icon sits within its button stays a style choice (the Shape & icon section's Size, saved in the preset). Changes made in combat apply the moment combat ends.")
+  -- ROWS 2–3: the geometry
+  w.size = at(UI.dial(bf, { label = "Icon Size", min = 24, max = 64, unit = "px",
+    get = function() local c = data(); return (c and c.size) or 45 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.size = v; apply() end }), 50, 118)
+  attachTip(w.size.strip, "Icon size", "Scales the WHOLE button proportionally — icon, text, glows — like Edit Mode's size setting. How the icon sits within its button is Shape & Icon's Size, saved in the preset.")
+  w.gap = at(UI.dial(bf, { label = "Icon Gap", min = -32, max = 64, unit = "px", centre = true,
+    get = function() local c = data(); return (c and c.gap) or 4 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.gap = v; apply() end }), 276, 118)
+  w.count = at(UI.dial(bf, { label = "Total Icons", min = 1, max = 12,
+    get = function() local c = data(); return (c and c.count) or 12 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.count = v; apply() end }), 502, 118)
+  w.rows = at(UI.dial(bf, { label = "Rows", min = 1, max = 6,
+    get = function() local c = data(); return (c and c.rows) or 1 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.rows = v; apply(); s.refresh() end }), 50, 173)
+  w.rowGap = at(UI.dial(bf, { label = "Gap Between Rows", min = -32, max = 64, unit = "px", centre = true,
+    get = function() local c = data(); return (c and (c.gapCross or c.gap)) or 4 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.gapCross = v; apply() end }), 276, 173)
+  w.orient = at(segCell(bf, "Orientation", { { value = true, label = "Horizontal" }, { value = false, label = "Vertical" } },
+    function() local c = data(); return not c or c.horizontal ~= false end,
+    function(v) local c = ensureBarLayout(selBar); c.horizontal = v; apply() end, { padX = 9 }), 502, 173)   -- the mock's 156px bar
+
+  -- the button row
+  local mvBtn = UI.button(bf, "Move Bars", { kind = "action", w = 120, onClick = function()
+    if GB.Layout then GB.Layout:SetMoveMode(not GB.Layout:MoveModeOn()) end
+  end })
+  mvBtn:SetPoint("TOPLEFT", 50, -257)
+  attachTip(mvBtn, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
+  local qkBtn = UI.button(bf, "Quick Keybind", { kind = "action", w = 120, onClick = openQuickKeybind })
+  qkBtn:SetPoint("TOPLEFT", 180, -257)
+  attachTip(qkBtn, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
+  local rsBtn = UI.button(bf, "Reset Positions", { kind = "action", w = 120, onClick = function() if GB.Layout then GB.Layout:ResetPosition(selBar) end end })
+  rsBtn:SetPoint("TOPLEFT", 310, -257)
+  attachTip(rsBtn, "Reset Positions", "Returns the selected bar to wherever Edit Mode places it.")
+  local hlBtn = UI.button(bf, "Highlight Preset's Bars", { kind = "action" })
+  hlBtn:SetPoint("TOPLEFT", 440, -257)
+  local function hlSync(on) hlBtn:SetActive(on) end
+  hlBtn:SetScript("OnClick", function()
+    if not (GB.Skin and GB.Skin.SetPresetHighlight) then return end
+    hlSync(GB.Skin:SetPresetHighlight(not GB.Skin:SetPresetHighlight()))   -- toggle (query then flip)
+  end)
+  attachTip(hlBtn, "Highlight bars using current preset", "Puts a translucent block behind every bar that wears the preset you're currently editing, so it's clear which bars your changes affect. Stays on with this window closed and through combat. Resets off when you log in.")
+  C._hlSync = hlSync
+  -- The master switch (the owner's placement, 2026-09-21: the button row's end).
+  w.enable = at(toggleCell(bf, "Gloom's Bars",
+    function() return GB.Skin and GB.Skin.enabled end,
+    function(v) if not GB.Skin then return end; if v then GB.Skin:Enable() else GB.Skin:Disable() end end), 660, 239)
+  attachTip(w.enable.control, "Gloom's Bars", "The master switch: Off returns every bar to Blizzard's own look and layout.")
+  C._enableToggle = w.enable.control
+  local function mvSync()
+    local moving = (GB.Layout and GB.Layout.MoveModeOn and GB.Layout:MoveModeOn()) or false
+    mvBtn:SetActive(moving)
+    mvBtn:SetLabel(moving and "Lock Bars" or "Move Bars")   -- the owner: the button names the NEXT action
+  end
+  C._mvFooterSync = mvSync
 
   selectBar = function(k)
     selBar = k
     for _, c in ipairs(chips) do c.b:SetActive(c.k == k) end
     s.refresh()
   end
+  -- The mock suffixes the per-bar labels with the bar: "Icon Size (Bar 1)".
+  local perBar = { { w.preset, "Style Preset" }, { w.vis, "Visibility Rule" }, { w.size, "Icon Size" }, { w.gap, "Icon Gap" },
+                   { w.count, "Total Icons" }, { w.rows, "Rows" }, { w.rowGap, "Gap Between Rows" }, { w.orient, "Orientation" } }
+  local function barShort() for _, bar in ipairs(GB.BARS) do if bar.buttonPrefix == selBar then
+    return bar.key:match("^bar(%d+)$") and ("Bar " .. bar.key:match("^bar(%d+)$")) or bar.label:gsub(" Bar$", "") end end return "" end
 
-  bf:SetHeight(478 + BY)
+  bf:SetHeight(280)
   s.refresh = function()
     for _, c in ipairs(chips) do c.b:SetActive(c.k == selBar) end
     local on = layoutOn()
-    -- Preset assignment is independent of the layout master switch (assign a look
-    -- to a bar whether or not GB owns its geometry) → always enabled.
-    presetdd:refresh()
-    own:refresh(); sizeRow:refresh(); gapRow:refresh(); rowsRow:refresh(); cntRow:refresh(); rgRow:refresh()
-    sizeRow:setEnabled(on); gapRow:setEnabled(on); rowsRow:setEnabled(on); cntRow:setEnabled(on)
+    local short = barShort()
+    for _, e in ipairs(perBar) do e[1].label:SetText(("%s (%s)"):format(e[2], short)) end
+    for _, c in pairs(w) do c:refresh() end
+    for _, name in ipairs({ "vis", "empty", "copy", "size", "gap", "count", "rows", "rowGap", "orient" }) do w[name]:setEnabled(on) end
     local c = data()
-    local hz = not c or c.horizontal ~= false
-    for _, e in ipairs(orBtns) do e.b:SetActive(on and e.h == hz); e.b:SetEnabled(on) end
-    visdd:refresh(); visdd:SetEnabled(on)
-    local se = not (c and c.showEmpty == false)   -- nil/true = Shown
-    for _, e in ipairs(emBtns) do e.b:SetActive(on and e.v == se); e.b:SetEnabled(on) end
-    -- Row gap: visible only when the bar folds into >1 row. It lives above
-    -- Orientation, so Orientation + the hint slide down when it shows (only
-    -- the row's ANCHOR button moves — the second is chained to it). BY = the
-    -- extra chip-row shift (pet/stance added a third row of bar chips).
-    local multiRow = (c and (c.rows or 1) or 1) > 1
-    rgRow:SetShown(multiRow); rgRow:setEnabled(on)
-    local yOr = (multiRow and -416 or -372) - BY
-    dlab:ClearAllPoints(); dlab:SetPoint("TOPLEFT", 18, yOr - 2)
-    orBtns[1].b:ClearAllPoints(); orBtns[1].b:SetPoint("TOPRIGHT", -18, yOr)
-    mvBtn:ClearAllPoints(); mvBtn:SetPoint("TOPLEFT", 18, yOr - 30)
-    rsBtn:ClearAllPoints(); rsBtn:SetPoint("TOPRIGHT", -18, yOr - 30)
-    local moving = (GB.Layout and GB.Layout:MoveModeOn()) or false
-    mvBtn:SetActive(moving)
-    mvBtn:SetText(moving and "Lock Bars" or "Move Bars")   -- the owner: the button names the NEXT action
-    mvBtn:SetEnabled(on); rsBtn:SetEnabled(on)
-    hint:ClearAllPoints()
-    hint:SetPoint("TOPLEFT", 18, yOr - 62)
-    hint:SetPoint("RIGHT", bf, "RIGHT", -16, 0)
-    bf:SetHeight((multiRow and 522 or 478) + BY)
-    relayout()
+    w.rowGap:setEnabled(on and ((c and (c.rows or 1) or 1) > 1))
+    mvSync(); mvBtn:SetEnabled(on); rsBtn:SetEnabled(on)
+    if GB.Skin and GB.Skin.SetPresetHighlight then hlSync(GB.Skin:SetPresetHighlight()) end
   end
 end
 
+-- The PREVIEW pane (stage 3, the Shape mock): the rail's lower part, the one
+-- dark surface (#1e1e1e) — "Preview" in white, the 13 state buttons two
+-- across (102 wide, 21 apart), the construction, then the state's name, its
+-- description and the "Styled in:" links in lilac.
 local function buildPreviewPane(parent)
   local pane = CreateFrame("Frame", nil, parent)
-  pane:SetPoint("TOPRIGHT", 0, 0)
-  pane:SetPoint("BOTTOMRIGHT", 0, FOOTER_H)
-  pane:SetWidth(PREVIEW_W)
+  pane:SetPoint("TOPLEFT", 0, -RAIL_TOP_H)
+  pane:SetPoint("BOTTOMLEFT", 0, 0)
+  pane:SetWidth(RAIL_W)
+  local plate = pane:CreateTexture(nil, "BACKGROUND"); plate:SetAllPoints(); plate:SetColorTexture(0x1e / 255, 0x1e / 255, 0x1e / 255, 1)
 
-  local eb = newText(pane, FONT.head, 12, MUTE, "LEFT"); eb:SetPoint("TOPLEFT", 14, -12); eb:SetText("PREVIEW")
+  local eb = newText(pane, FONT.uiB, 14, COLOR.paper, "LEFT"); eb:SetPoint("TOPLEFT", 20, -27); eb:SetText("Preview")
 
-  -- state chips (2 columns x 3 rows)
+  -- state buttons (2 columns × 7 rows)
   previewChips = {}
   for i, st in ipairs(PREVIEW_STATES) do
     local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
-    local chip = flatButton(pane, 90, 22, COLOR.heroic, st[2], 11); chip:SetBase(0.2)
-    chip:SetPoint("TOPLEFT", 12 + col * 96, -34 - row * 26)
-    chip:SetScript("OnClick", function() C:SetPreviewState(st[1]) end)
+    local chip = UI.button(pane, st[2], { kind = "action", w = 102, onClick = function() C:SetPreviewState(st[1]) end })   -- dark, violet when current (the mock)
+    chip:SetPoint("TOPLEFT", 20 + col * 106, -49 - row * 21)   -- 22 under the title's glyphs (the owner: more room)
     previewChips[st[1]] = chip
   end
 
@@ -2962,15 +2158,16 @@ local function buildPreviewPane(parent)
   -- body. The body lives on its own mouse-enabled frame with hyperlinks on:
   -- section names are |Hgbsec:*|h links (caret orange) that open that accordion
   -- section. RefreshPreview re-anchors both below the construction.
-  local head = newText(pane, FONT.label, 11, TEXT, "LEFT")
+  -- The caption sits at the mock's fixed y (354 under the pane's top), inset 20
+  -- each side — fixed anchors, so nothing about the construction's height can
+  -- shift it (an over-constrained TOP + LEFT + RIGHT drifted it left).
+  local head = newText(pane, FONT.uiB, 12, COLOR.paper, "LEFT")
   head:SetJustifyH("LEFT"); head:SetText("")
-  head:SetPoint("TOP", frame, "BOTTOM", 0, -26)
-  head:SetPoint("LEFT", pane, "LEFT", 10, 0); head:SetPoint("RIGHT", pane, "RIGHT", -10, 0)
+  head:SetPoint("TOPLEFT", pane, "TOPLEFT", 20, -354); head:SetPoint("TOPRIGHT", pane, "TOPRIGHT", -20, -354)
   previewCaptionHead = head
-  local cap = newText(pane, FONT.body, 10, MUTE, "LEFT")
+  local cap = newText(pane, FONT.ui, 11, COLOR.paper, "LEFT")
   cap:SetJustifyH("LEFT"); cap:SetText(PREVIEW_CAPTION_DEFAULT)
-  cap:SetPoint("TOP", head, "BOTTOM", 0, -3)
-  cap:SetPoint("LEFT", pane, "LEFT", 10, 0); cap:SetPoint("RIGHT", pane, "RIGHT", -10, 0)
+  cap:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -3); cap:SetPoint("TOPRIGHT", head, "BOTTOMRIGHT", 0, -3)
   previewCaption = cap
   -- The "Styled in:" bullet list — bold (Semibold), on its own mouse-enabled
   -- hyperlink frame; clicking an orange section name opens that section.
@@ -2984,10 +2181,9 @@ local function buildPreviewPane(parent)
     C:OpenSection(title)
     C:SetPreviewState(st)   -- some sections hijack the preview on open (Glows → proc); restore the clicked state
   end)
-  local links = newText(capFrame, FONT.label, 10.5, MUTE, "LEFT")
-  links:SetJustifyH("LEFT"); links:SetSpacing(3); links:SetText("")
-  links:SetPoint("TOP", cap, "BOTTOM", 0, -8)
-  links:SetPoint("LEFT", pane, "LEFT", 10, 0); links:SetPoint("RIGHT", pane, "RIGHT", -10, 0)
+  local links = newText(capFrame, FONT.ui, 11, COLOR.paper, "LEFT")
+  links:SetJustifyH("LEFT"); links:SetSpacing(2); links:SetText("")
+  links:SetPoint("TOPLEFT", cap, "BOTTOMLEFT", 0, -12); links:SetPoint("TOPRIGHT", cap, "BOTTOMRIGHT", 0, -12)
   previewCaptionLinks = links
   capFrame:SetAllPoints(links)   -- the click surface tracks the list's rect
 end
@@ -2998,109 +2194,41 @@ end
 local function BuildTab(c)
   container = c
 
-  -- The tab's own footer row: divider + the controls that lived in the old
-  -- standalone window's footer (CONTRACTS §2 — they move INTO the tab).
-  local fdiv = hLine(c)
-  fdiv:SetPoint("BOTTOMLEFT", 0, FOOTER_H); fdiv:SetPoint("BOTTOMRIGHT", 0, FOOTER_H)
-  local enTog = makeToggle(c,
-    function() return GB.Skin and GB.Skin.enabled end,
-    function(v) if not GB.Skin then return end; if v then GB.Skin:Enable() else GB.Skin:Disable() end end)
-  enTog:SetPoint("BOTTOMLEFT", 16, 16)
-  local enLbl = newText(c, FONT.body, 12.5, TEXT, "LEFT"); enLbl:SetPoint("LEFT", enTog, "RIGHT", 10, 0)
-  enLbl:SetText("Enable Gloom's Bars")
-  C._enableToggle = enTog
-  -- Footer quick-keybind (the owner: reachable without digging into Bar layout).
-  -- (The old footer profile switcher is gone — the left rail is always visible.)
-  local fqk = flatButton(c, 110, 24, COLOR.heroic, "Quick Keybind", 11); fqk:SetBase(0.2)
-  fqk:SetPoint("BOTTOMRIGHT", -14, 14)
-  fqk:SetScript("OnClick", openQuickKeybind)
-  attachTip(fqk, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
-
-  -- Preset-focus highlight toggle (the owner, session 15): a session-only switch that
-  -- puts a 50% purple block behind every bar wearing the preset you're editing, so
-  -- you can see/watch which bars your edits touch — persists with the window closed
-  -- and in combat. Purple off → orange on (flatButton's SetActive); text flips
-  -- OFF/ON. Left of Quick keybind. Built with SetBase(1) so the off purple is full.
-  local fhl = flatButton(c, 246, 24, COLOR.purple, "Highlight Bars Using Current Preset: OFF", 11)
-  fhl:SetBase(1)
-  fhl:SetPoint("BOTTOMRIGHT", fqk, "BOTTOMLEFT", -8, 0)
-  local function hlText(on) fhl.text:SetText("Highlight Bars Using Current Preset: " .. (on and "ON" or "OFF")) end
-  local function hlSync(on) fhl:SetActive(on); hlText(on) end
-  fhl:SetScript("OnClick", function()
-    if not (GB.Skin and GB.Skin.SetPresetHighlight) then return end
-    local now = GB.Skin:SetPresetHighlight(not GB.Skin:SetPresetHighlight())   -- toggle (query then flip)
-    hlSync(now)
-  end)
-  attachTip(fhl, "Highlight bars using current preset", "Puts a translucent block behind every bar that wears the preset you're currently editing, so it's clear which bars your changes affect — handy for watching live previews. Stays on with this window closed and through combat. Resets off when you log in.")
-  C._hlSync = hlSync
-
-  -- Footer Move bars (the owner: reachable from the footer too, like Quick keybind).
-  -- Mirrors the Bar Layout section's button — same SetMoveMode toggle, same
-  -- "Move Bars" ↔ "Lock Bars" next-action label. Purple off → orange on.
-  local fmv = flatButton(c, 110, 24, COLOR.purple, "Move Bars", 11)
-  fmv:SetBase(1)
-  fmv:SetPoint("BOTTOMRIGHT", fhl, "BOTTOMLEFT", -8, 0)
-  local function mvSync()
-    local moving = (GB.Layout and GB.Layout.MoveModeOn and GB.Layout:MoveModeOn()) or false
-    fmv:SetActive(moving)
-    fmv.text:SetText(moving and "Lock Bars" or "Move Bars")   -- names the NEXT action
-  end
-  fmv:SetScript("OnClick", function()
-    if GB.Layout then GB.Layout:SetMoveMode(not GB.Layout:MoveModeOn()) end
-    mvSync()
-  end)
-  attachTip(fmv, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
-  C._mvFooterSync = mvSync
-  -- (No OnShow sync hook: the shell calls this tab's refresh — C:Refresh —
-  -- on every focus, which syncs both footer toggles.)
-
-  -- Three panels: left rail (profiles/presets) · middle controls · right preview,
-  -- with a vertical divider at each seam.
+  -- The rail: the preset block over the preview pane; the accordion fills the rest.
   buildRailPane(c)
   buildPreviewPane(c)
-  local vdivL = c:CreateTexture(nil, "ARTWORK"); vdivL:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  vdivL:SetWidth(1); vdivL:SetPoint("TOPLEFT", RAIL_W, 0); vdivL:SetPoint("BOTTOMLEFT", RAIL_W, FOOTER_H)
-  local vdivR = c:CreateTexture(nil, "ARTWORK"); vdivR:SetColorTexture(COLOR.rim.r, COLOR.rim.g, COLOR.rim.b, COLOR.rim.a or 0.1)
-  vdivR:SetWidth(1); vdivR:SetPoint("TOPRIGHT", -PREVIEW_W, 0); vdivR:SetPoint("BOTTOMRIGHT", -PREVIEW_W, FOOTER_H)
 
-  -- Body: a scroll frame holding the accordion (the middle panel).
-  -- The section content grows past the window height, so it scrolls (mouse wheel).
+  -- Body: a scroll frame holding the accordion.
   local scroll = CreateFrame("ScrollFrame", nil, c)
   contentScroll = scroll   -- module ref: ToggleSection scrolls the opened section near the top
-  scroll:SetPoint("TOPLEFT", RAIL_W + 1, -1)
-  scroll:SetPoint("BOTTOMRIGHT", -(PREVIEW_W + 8), FOOTER_H + 1)
+  scroll:SetPoint("TOPLEFT", RAIL_W, -20)   -- 20 above the first header (the owner, 2026-09-21)
+  scroll:SetPoint("BOTTOMRIGHT", -24, FOOTER_H)
   scroll:EnableMouseWheel(true)
   scroll:SetScript("OnMouseWheel", function(self, delta)
     local range = self:GetVerticalScrollRange()
     self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 42)))
   end)
   bodyContainer = CreateFrame("Frame", nil, scroll)
-  -- The SHELL owns the window size (no PANEL_W here): the accordion tracks the
-  -- middle pane's live width, so any extra shell width lands in this pane.
   bodyContainer:SetSize(math.max(10, scroll:GetWidth()), 10)
   scroll:SetScrollChild(bodyContainer)
   scroll:SetScript("OnSizeChanged", function(self, w)
     if w and w > 0 then bodyContainer:SetWidth(w) end
   end)
-
-  -- Custom thin scrollbar (shared helper): orange thumb + click-to-jump + drag + wheel.
-  -- The accordion grows/shrinks as sections open; the bar's OnUpdate tracks it.
-  -- Sits in the middle panel's right gutter, just left of the preview divider.
   makeScrollbar(c, scroll, function(b)
-    b:SetPoint("TOPRIGHT", -(PREVIEW_W + 4), -2); b:SetPoint("BOTTOMRIGHT", -(PREVIEW_W + 4), FOOTER_H + 2)
-  end)
+    b:SetPoint("TOPRIGHT", -8, -2); b:SetPoint("BOTTOMRIGHT", -8, FOOTER_H + 2)
+  end, { kit = true })
 
   -- Sections (mockup order). Profiles/presets live in the left rail now — the
   -- accordion holds the per-preset styling + bar controls.
-  makeSection("Shape & icon", buildShapeSection)
-  makeSection("Plate", buildPlateSection)
-  makeSection("Decoration layers", buildDecorSection)
+  makeSection("Shape & Icon", buildShapeSection)
+  makeSection("Plate Construction", buildPlateSection)
+  makeSection("Decoration Layers", buildDecorSection)
   makeSection("Text", buildTextSection)
   makeSection("Glows", buildGlowsSection)
   makeSection("Animations", buildAnimsSection)
-  makeSection("Cast & channel", buildCastSection)
-  makeSection("Cooldown & availability", buildCooldownSection)
-  makeSection("Empty slots", buildEmptySection)
+  makeSection("Cast & Channel", buildCastSection)
+  makeSection("Cooldown & Availability", buildCooldownSection)
+  makeSection("Empty Slots", buildEmptySection)
   makeSection("Bar Layout & Preset", buildLayoutSection)
 
   -- All sections start CLOSED (the owner 2026-07-20 — easier to find the one you want
@@ -3143,9 +2271,11 @@ end
 -- BuildTab runs ONCE, lazily, the first time the tab is shown. `refresh`
 -- fires on every focus so live state (footer toggles, rail, preview) re-syncs.
 GloomsHub:RegisterTab{
-  id      = "bars",
-  title   = "BARS",
-  order   = 20,
-  build   = BuildTab,
-  refresh = function() C:Refresh() end,
+  id       = "bars",
+  title    = "BARS",
+  order    = 20,
+  wordmark = "BARS",
+  profile  = PROFILE_API,
+  build    = BuildTab,
+  refresh  = function() C:Refresh() end,
 }
