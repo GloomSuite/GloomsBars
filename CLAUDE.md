@@ -187,11 +187,10 @@ secure state drivers) is still avoided by staying a layer over Blizzard's own bu
   fallback if libs are absent) + title-bar logo wiring. Left-click opens Config. Data in
   `db.minimap` (account-wide).
 - `Config.lua` — the style editor. `/gb` opens it **as the BARS tab of the Suite window**
-  (GloomsHub's shell; Phase C). **Three panes in the tab:** a left RAIL (profile + preset
-  selection, always visible) · a middle scrollable one-open ACCORDION (all the controls) · a
-  right PREVIEW pane, over the tab's own footer row (Enable toggle, Quick keybind, Move Bars,
-  preset-focus highlight). Widgets/tokens come from `LibGloomSkin-1.0` (surface pinned in
-  `~/GloomsHub/docs/CONTRACTS.md` §4); all wired sections + the working-copy model live here.
+  (GloomsHub's shell). Since 2026-09-25 it is a GLASS tool: seven pages at the mocks' window
+  coordinates, the Editing-Preset row and the live Preview panel on every page (details: HANDOFF's
+  top block). Widgets/tokens come from `LibGloomSkin-1.0`'s glass kit (surface pinned in
+  `~/GloomsHub/docs/CONTRACTS.md` §4); all the working-copy wiring lives here.
 - `Media/masks/`, `Media/art/` — generated shape + animation art. `tools/generate-art.py`
   regenerates the SDF masks/rings/swipes (edge-padding rule in API-NOTES §2). **Full regen
   is slow (~4 min); regen ONE shape** with `python3 tools/generate-art.py <name>`; the

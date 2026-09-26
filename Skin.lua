@@ -222,20 +222,28 @@ local gridShown = false
 -- ALPHA is not geometry, is not combat-restricted, and rides the per-button
 -- Update post-hook that already runs in combat — so it re-asserts itself.
 -- Do not "restore" the container hide.
-local function collapseEmpty(rec)
+-- ★ 2026-09-25 (the glass Bars tab): the per-bar Empty Icons is a real
+-- OVERRIDE in both directions — GLOBAL (showEmpty nil: follow the Empty Slots
+-- setting, which is what nil always meant) · SHOW (true: normal, whatever the
+-- global says) · HIDE (false). The owner labelled the global "(Global)" so the
+-- per-bar one reads as its override; before this, "Show" only followed it.
+local function emptyOverride(rec)
   local prof = GB.ActiveProfile and GB:ActiveProfile()
   -- Master layout switch OFF = Edit Mode owns the bars, so a stale per-bar
   -- showEmpty must not keep buttons invisible with no visible way back.
-  if not (prof and prof.layoutEnabled) then return false end
+  if not (prof and prof.layoutEnabled) then return nil end
   local bl = prof.barLayout
   local bc = bl and rec.barKey and bl[rec.barKey]
-  return bc and bc.showEmpty == false
+  if not bc then return nil end
+  if bc.showEmpty == false then return "hide" end
+  if bc.showEmpty == true then return "normal" end
+  return nil
 end
 local function applyEmptyAlpha(btn)
   local rec = records[btn]
   if not (rec and rec.active) then return end
-  -- A bar set to hide its empties outranks the global Dim/Normal setting.
-  local mode = collapseEmpty(rec) and "hide" or (pv("emptySlots") or "normal")
+  -- A bar's own override outranks the global Dim/Normal/Hidden setting.
+  local mode = emptyOverride(rec) or (pv("emptySlots") or "normal")
   local a = 1
   if mode ~= "normal" and not gridShown then
     local icon = btn.icon or btn.Icon

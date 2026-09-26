@@ -8,6 +8,26 @@
 > status, contracts) — point at the Hub. Every time that rule was broken, the copy went stale
 > within a day.
 >
+> ## ▶▶▶ 2026-09-25/26 — THE BARS TAB IS REBUILT: the GLASS design (seven pages)
+> Suite-wide status, decisions and what is un-mocked: Hub BACKLOG 16 · CONTRACTS §2/§4 · FINDINGS §22.
+> Bars detail only:
+> - All in `Config.lua` ("THE GLASS TAB" block): the accordion, the rail and `makeSection` are
+>   GONE; the preview's logic (`C:RefreshPreview`, `SetPreviewState`, …) is unchanged except its
+>   size (a 70px construction, `PREVIEW_BASE`) and home (the glass Preview panel, 30,314).
+>   `C:OpenSection(title)` now opens a PAGE (the caption's "Styled in:" links name page titles).
+>   `SKIN_NEEDS = 14`. The glass tiles: `Media/glass/<page>-a|b|c|d.png` (from the Hub's
+>   `tools/gen-glass-art.py bg` — never hand-edited).
+> - **Empty Icons is a real override** (`Skin.lua` `emptyOverride`): `barLayout.showEmpty` nil =
+>   GLOBAL (follow Empty Slots — what nil always meant), true = SHOW (normal whatever the global
+>   says, NEW), false = HIDE.
+> - **Name text is OFF/ON**: OFF = `mode "hidden"`, ON = `"custom"`; a legacy `"default"` reads ON
+>   and becomes custom when any Name control is edited (`ensureNameCustom`).
+> - **Fixed:** the Pulse Speed dial called `GB.Glows:SetPulseSpeed`, removed in session 10 — it threw
+>   on every move. It now writes `db.glowPulseSpeed`, which Glows.lua reads live.
+> - The Text page is ONE set of controls; the KEYBIND · CHARGE COUNT · COUNTDOWN · NAME strip picks
+>   what they edit. Each text keeps its own anchor choices (one switch per kind, one shown);
+>   Countdown has none (a dimmed placeholder). Mac Symbol Icons dims off the Keybind tab.
+>
 > **Keep this file re-readable.** If it passes ~350 lines, move settled history to the archive.
 > The handoff ritual (`~/GloomsHub/.claude/skills/handoff-ritual/`) maintains it.
 >

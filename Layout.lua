@@ -240,7 +240,7 @@ local function applyBar(barKey)
       -- post-hook. The container stays SHOWN and keeps its grid slot exactly as
       -- before (a hole, not a shuffle) — only the button goes invisible, which
       -- is what the collapse always looked like anyway.
-      -- ⚠ Do not reinstate the hide here; see the comment on collapseEmpty.
+      -- ⚠ Do not reinstate the hide here; see the comment on emptyOverride (Skin.lua).
       cont:SetShown(show)
 
       -- ★ OUT-OF-GRID BUTTONS GET THE SAME TREATMENT, for the same reason
