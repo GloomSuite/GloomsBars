@@ -8,7 +8,20 @@
 > status, contracts) — point at the Hub. Every time that rule was broken, the copy went stale
 > within a day.
 >
-> ## ▶▶▶ 2026-09-25/26 — THE BARS TAB IS REBUILT: the GLASS design (seven pages)
+> ## ▶▶▶ 2026-09-27 — BARS IS NOW TWO WINDOWS (the end of `Config.lua`, "THE TWO-WINDOW DESIGN")
+> Suite-wide: Hub BACKLOG 16 · CONTRACTS §2/§4 · FINDINGS §22. Bars detail only:
+> - The **selector** is the PREVIEW window (`buildPreviewPane(content)`; `container` = it): chips from
+>   y 52, the construction centered 218 down (`PREVIEW_CENTER_Y`), the caption at 293.
+> - The **tab** ("Editing Preset: <name>", New, Delete): click the name = the preset list, right-click =
+>   Rename · Duplicate · Delete. The old "Editing Preset" row is gone; `presetTabs` keeps every tab in step.
+> - Seven **sections** (`Section(id, parent, h)` → `P.pages[id]`, refreshed on show). The Layout
+>   section's bar picker is a LIME `gSwitch` with per-segment `widths` (1-8 share what PET/STANCE leave).
+>   Glows' state picker is two 4-wide switches sharing one value. **Casts keeps "Complete Color"**
+>   (not in the mock — BACKLOG 16 asks the owner). `SKIN_NEEDS = 16`.
+> - `C:OpenSection(title)` → `GloomsHub:ShowPage("bars", id)` opens that section.
+> - `Media/glass/` is deleted.
+>
+> ## ▶▶ 2026-09-25/26 — THE BARS TAB WAS REBUILT: the GLASS design (seven pages) — superseded
 > Suite-wide status, decisions and what is un-mocked: Hub BACKLOG 16 · CONTRACTS §2/§4 · FINDINGS §22.
 > Bars detail only:
 > - All in `Config.lua` ("THE GLASS TAB" block): the accordion, the rail and `makeSection` are
