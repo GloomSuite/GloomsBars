@@ -52,6 +52,13 @@
 
 ---
 
+## ▶▶▶ 2026-09-27 — the owner's first in-game round on the two-window Bars
+Suite-wide facts are the Hub's (BACKLOG 16, CONTRACTS §2/§4). Here: the Text section's Font list
+draws each name in its own face (`fontPathOf`); Casts & Channels' extra color is labelled **"Cast
+Complete Color"** (the owner kept it); every section's positions follow the 10-point labels (control
+15 under its label, rows 41 apart — CONTRACTS §4); colors offer "Use Class Color" (`Core.lua` stamps
+them at login). `SKIN_NEEDS = 17`.
+
 ## ▶▶▶ 2026-09-21 — the Bars tab on the kit (redesign stage 3)
 
 **Shape.** The RAIL (250) holds the kit PRESET block (a white field picker + NEW · COPY / RENAME ·

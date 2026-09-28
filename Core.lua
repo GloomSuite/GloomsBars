@@ -787,6 +787,9 @@ loader:SetScript("OnEvent", function(_, event, arg1)
       end
     end
   elseif event == "PLAYER_LOGIN" then
+    -- Colors set to "Use Class Color" take THIS character's class, in every
+    -- profile, before anything applies them (the Hub's kit, LibGloomSkin).
+    if GloomsHub and GloomsHub.UI and GloomsHub.UI.StampClassColors then GloomsHub.UI.StampClassColors(GloomsBarsDB) end
     -- Bind this character to its profile. A character's FIRST login creates
     -- its OWN profile — "Name - Realm", the GloomsAuras convention (the owner,
     -- session 13: characters must not share a profile by default). Existing

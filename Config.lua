@@ -35,7 +35,7 @@ GB.Config = C
 -- actionable sentence instead.
 -- ★ BUMP SKIN_NEEDS IN THE SAME COMMIT that first calls a newer widget.
 -- --------------------------------------------------------------------------
-local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 16   -- 16: the two-window kit (Sansation, stretched controls, the windows); 15: solid panels + hairlines; 14: the GLASS KIT (gButton / gSwitch / gDrop / gDial / gColor …) + the glass Suite window — the third redesign
+local SKIN_MAJOR, SKIN_NEEDS = "LibGloomSkin-1.0", 17   -- 17: class color, font-previewing lists; 16: the two-window kit (Sansation, stretched controls, the windows); 15: solid panels + hairlines; 14: the GLASS KIT (gButton / gSwitch / gDrop / gDial / gColor …) + the glass Suite window — the third redesign
 
 local Skin, skinMinor = LibStub(SKIN_MAJOR, true)
 -- ★ The silhouette catalog and its art live in GloomsHub since 2026-08-25, and this
@@ -153,6 +153,14 @@ local function fontChoices()
   for n in pairs(GB.BUNDLED_FONTS or {}) do t[#t + 1] = n end
   table.sort(t)
   return t
+end
+
+-- A font NAME's file, so the Font list draws each name in its own face (the
+-- owner, 2026-09-27: "fonts show as previews"). Same lookup as Skin.lua's resolveFont.
+local function fontPathOf(n)
+  local lsm = GB.GetLSM and GB.GetLSM()
+  local p = lsm and lsm:Fetch("font", n, true)
+  return p or (GB.BUNDLED_FONTS and GB.BUNDLED_FONTS[n])
 end
 
 -- Preview caption: the default explainer line, swapped by the Animations section for a
@@ -1088,8 +1096,9 @@ local function layoutOn() local prof = GB:ActiveProfile(); return (prof and prof
 -- content, the settings window's TAB ("Editing Preset: <name>" — click the name
 -- for the list, right-click it for Rename · Duplicate · Delete; New and Delete
 -- beside it) and the seven SECTIONS. Every number inside a section is the
--- mock's own coordinate inside it: a labelled control is 33 tall (the label,
--- 4, the 16-tall control), rows 43 apart, blocks 30 apart, two columns of 170
+-- mock's own coordinate inside it: a labelled control is 31 tall (the label's
+-- box, 11 at Sansation 10, then 4, then the 16-tall control; 33 while labels
+-- were 12), rows 41 apart, blocks 30 apart, two columns of 170
 -- at 0 and 190, three of 107/106/107 at 0 / 127 / 253.
 -- A control that cannot apply right now DIMS to 30% with its label — never
 -- hides (the suite's rule).
@@ -1101,7 +1110,7 @@ local C1, C2 = 0, 190
 local T1, T2, T3 = 0, 127, 253
 
 local function Label(parent, x, y, text, size, c)
-  local l = UI.gLabel(parent, text, size or 12, c); l:SetPoint("TOPLEFT", x, -y)
+  local l = UI.gLabel(parent, text, size, c); l:SetPoint("TOPLEFT", x, -y)
   return l
 end
 local function Title(parent, x, y, text, size)
@@ -1120,11 +1129,11 @@ local function Drop(parent, x, y, w, label, values, get, set, opts)
     end,
     function()
       local out = {}
-      for _, v in ipairs(list()) do out[#out + 1] = { value = v[1], label = v[2], disabled = v[3] } end
+      for _, v in ipairs(list()) do out[#out + 1] = { value = v[1], label = v[2], disabled = v[3], font = v.font } end
       return out
     end,
     get, set, opts)
-  d:SetPoint("TOPLEFT", x, -(y + (label and 17 or 0)))
+  d:SetPoint("TOPLEFT", x, -(y + (label and 15 or 0)))
   d._label = lbl
   return d
 end
@@ -1132,7 +1141,7 @@ local function Switch(parent, x, y, w, label, choices, get, set, opts)
   local lbl = label and Label(parent, x, y, label)
   opts = opts or {}; opts.w = opts.w or w
   local s = UI.gSwitch(parent, choices, get, set, opts)
-  s:SetPoint("TOPLEFT", x, -(y + (label and 17 or 0)))
+  s:SetPoint("TOPLEFT", x, -(y + (label and 15 or 0)))
   s._label = lbl
   return s
 end
@@ -1150,7 +1159,7 @@ local function Color(parent, x, y, w, label, opts)
   opts.title = opts.title or label
   opts.w = w
   local c = UI.gColor(parent, opts)
-  c:SetPoint("TOPLEFT", x, -(y + (label and 17 or 0)))
+  c:SetPoint("TOPLEFT", x, -(y + (label and 15 or 0)))
   c._label = lbl
   return c
 end
@@ -1183,13 +1192,13 @@ end
 P.refreshSection = refreshPage
 
 -- ---------------------------------------------------------------------------
--- SECTION · ICON SIZE & SHAPE (the mock's Frames 545-548, 415 tall)
+-- SECTION · ICON SIZE & SHAPE (the mock's Frames 545-548, 411 tall)
 -- The preset silhouettes as a grouped tile grid. The shaped-glow pivot (session
 -- 8, docs/SHAPE-CATALOG.md) retired free width/height: the icon is ONE baked
 -- silhouette so it can't warp, and Icon Scale scales every icon together.
 -- ---------------------------------------------------------------------------
 local function buildShapePage(parent)
-  local pg = Section("shape", parent, 415); local f = pg.frame
+  local pg = Section("shape", parent, 411); local f = pg.frame
   -- "Icon Scale": the icon within its button, per preset. The whole BUTTON's
   -- size is Icon Size, per bar, in Bar Visibility, Layout & Presets.
   local sizeDial = add(pg, Dial(f, C1, 0, 170, { label = "Icon Scale", min = 50, max = 200, step = 5, unit = "%",
@@ -1200,7 +1209,7 @@ local function buildShapePage(parent)
     get = function() return math.floor(((GB.db and GB.db.zoom) or 0) * 100 + 0.5) end,
     set = function(v) v = v / 100; if GB.Skin then GB.Skin:SetZoom(v) end; C:PreviewZoom(v) end }))
   attachTip(zoomDial.strip, "Icon zoom", "Crops into the icon art from every side, hiding Blizzard's baked-in border.")
-  local fill = add(pg, Switch(f, C1, 43, 170, "Crop to Fill", OFFON,
+  local fill = add(pg, Switch(f, C1, 41, 170, "Crop to Fill", OFFON,
     function() return not (GB.db and GB.db.iconFill == "stretch") end,
     function(v)
       if GB.Skin then GB.Skin:SetIconFill(v and "fill" or "stretch") else GB.db.iconFill = v and "fill" or "stretch" end
@@ -1244,9 +1253,9 @@ local function buildShapePage(parent)
     b:SetSelected(false)
     return b
   end
-  -- "Icon Shape" + the group's name in lime (Sansation 12) at each group's top;
-  -- the tiles 23 under it; the next group 20 after the last row.
-  local y = 106
+  -- "Icon Shape" + the group's name in lime (Sansation 10) at each group's top;
+  -- the tiles 21 under it (the label's 11 + 10); the next group 20 after the last row.
+  local y = 102
   for _, g in ipairs(GB.HAND_GROUPS) do
     Label(f, 0, y, ("Icon Shape |cff%s%s|r"):format(LIME.hex, g.title))
     local rows = 1
@@ -1254,9 +1263,9 @@ local function buildShapePage(parent)
       local col, row = (i - 1) % PER_ROW, math.floor((i - 1) / PER_ROW)
       rows = math.max(rows, row + 1)
       local th = makeThumb(key); thumbs[key] = th
-      th:SetPoint("TOPLEFT", col * PITCH, -(y + 23 + row * PITCH))
+      th:SetPoint("TOPLEFT", col * PITCH, -(y + 21 + row * PITCH))
     end
-    y = y + 23 + (rows - 1) * PITCH + CELL + 20
+    y = y + 21 + (rows - 1) * PITCH + CELL + 20
   end
   f:SetHeight(y - 20)
   pg.after = function()
@@ -1267,10 +1276,10 @@ local function buildShapePage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · DECORATION LAYERS (the mock's Panel Content, 523 tall)
+-- SECTION · DECORATION LAYERS (the mock's Panel Content, 501 tall)
 -- ---------------------------------------------------------------------------
 local function buildDecoPage(parent)
-  local pg = Section("deco", parent, 523); local f = pg.frame
+  local pg = Section("deco", parent, 501); local f = pg.frame
   local function decor() if GB.Skin then GB.Skin:ReapplyDecor() end; C:RefreshPreview() end
   local function relook() refreshPage(pg) end
 
@@ -1293,12 +1302,12 @@ local function buildDecoPage(parent)
       if GB.Skin then GB.Skin:RefreshPlate() end
       C:RefreshPreview()
     end), live)
-  add(pg, Color(f, C1, 43, 170, "Plate Color", { label = "Bars › Plate color",
+  add(pg, Color(f, C1, 41, 170, "Plate Color", { label = "Bars › Plate color",
     get = function() local p = plateData(); return p and p.color end,
     set = function(c) local p = ensurePlate(); if p then p.color = c end; local l = gradLayer(); if l then l.color = c end; decor() end }), live)
   -- Fade start: how far the plate color bleeds up over the icon. Kept in sync with the
   -- gradient's fade (bleedPct) when a gradient layer exists.
-  local fade = add(pg, Dial(f, C2, 43, 170, { label = "Fade Start", min = 0, max = 100, step = 5, unit = "%",
+  local fade = add(pg, Dial(f, C2, 41, 170, { label = "Fade Start", min = 0, max = 100, step = 5, unit = "%",
     get = function() local p = plateData(); return math.floor(((p and p.fadeStart) or 0.5) * 100 + 0.5) end,
     set = function(v)
       v = v / 100
@@ -1309,28 +1318,28 @@ local function buildDecoPage(parent)
   attachTip(fade.strip, "Fade start", "How far up the icon the plate color bleeds before it fades out.")
   -- Dim on cooldown: the plate color darkens while the action's REAL (non-GCD)
   -- cooldown runs. Engine: Skin's dim proxy.
-  add(pg, Switch(f, C1, 86, 170, "Dim on Cooldown", OFFON,
+  add(pg, Switch(f, C1, 82, 170, "Dim on Cooldown", OFFON,
     function() local p = plateData(); return p and p.dimCD and true or false end,
     function(v)
       local p = ensurePlate(); if p then p.dimCD = v and true or false end
       if GB.Skin and GB.Skin.RefreshPlateDim then GB.Skin:RefreshPlateDim() end
     end), live)
-  local note = UI.gLabel(f, "", 9); note:SetPoint("TOPLEFT", C2, -86); note:SetWidth(170); note:SetJustifyH("LEFT")
+  local note = UI.gLabel(f, "", 9); note:SetPoint("TOPLEFT", C2, -82); note:SetWidth(170); note:SetJustifyH("LEFT")
   note:SetWordWrap(true)
   note:SetText("Note: Plate Construction needs a 2:1 aspect ratio. Pick |cffffffffPill 2:1|r, |cffffffffTall Square 2:1|r, or a |cffffffffTall Rounded 2:1|r in Icon Size & Shape.")
 
   -- GRADIENT OVERLAY — the fill that runs across the icon and fades out.
   local function gradOn() local l = gradLayer(); return l and l.enabled ~= false end
-  add(pg, Switch(f, C1, 149, 170, "Gradient Overlay", OFFON, function() return gradOn() and true or false end,
+  add(pg, Switch(f, C1, 143, 170, "Gradient Overlay", OFFON, function() return gradOn() and true or false end,
     function(v) local l = ensureGradLayer(); l.enabled = v; decor(); relook() end))
-  add(pg, Color(f, C2, 149, 170, "Gradient Color", { label = "Bars › Gradient fill color",
+  add(pg, Color(f, C2, 143, 170, "Gradient Color", { label = "Bars › Gradient fill color",
     get = function() local l = gradLayer(); return l and l.color end,
     set = function(c) local l = ensureGradLayer(); l.color = c; if plateData() then plateData().color = c end; decor() end }), gradOn)
-  local gstart = add(pg, Dial(f, C1, 192, 170, { label = "Gradient Start", min = 0, max = 100, step = 5, unit = "%",
+  local gstart = add(pg, Dial(f, C1, 184, 170, { label = "Gradient Start", min = 0, max = 100, step = 5, unit = "%",
     get = function() local l = gradLayer(); return math.floor(((l and l.bleedPct) or 0.5) * 100 + 0.5) end,
     set = function(v) v = v / 100; local l = ensureGradLayer(); l.bleedPct = v; if plateData() then plateData().fadeStart = v end; decor() end }), gradOn)
   attachTip(gstart.strip, "Gradient start", "How far across the icon the color reaches before it fades out; the direction sets the solid edge.")
-  add(pg, Switch(f, C2, 192, 170, "Gradient Direction", DIRS,
+  add(pg, Switch(f, C2, 184, 170, "Gradient Direction", DIRS,
     function() local l = gradLayer(); return (l and l.dir) or "up" end,
     function(d) local l = ensureGradLayer(); l.dir = d; decor() end), gradOn)
 
@@ -1339,18 +1348,18 @@ local function buildDecoPage(parent)
   -- Off keeps the second color (twoTone = false), so On brings it back
   -- unchanged (the owner, 2026-09-21: wiping it "is bad").
   local function twoOn() local b2 = borderData(); return b2 and b2.color2 ~= nil and b2.twoTone ~= false end
-  add(pg, Switch(f, C1, 255, 170, "Icon Border", OFFON, bOn,
+  add(pg, Switch(f, C1, 245, 170, "Icon Border", OFFON, bOn,
     function(v) local b2 = ensureBorder(); b2.enabled = v; decor(); relook() end))
-  add(pg, Dial(f, C2, 255, 170, { label = "Border Thickness", min = 1, max = 12, unit = "px",
+  add(pg, Dial(f, C2, 245, 170, { label = "Border Thickness", min = 1, max = 12, unit = "px",
     get = function() local b2 = borderData(); return (b2 and b2.thickness) or 3 end,
     set = function(v) local b2 = ensureBorder(); b2.thickness = v; decor() end }), bOn)
-  add(pg, Dial(f, C1, 298, 170, { label = "Border Opacity", min = 0, max = 100, step = 5, unit = "%",
+  add(pg, Dial(f, C1, 286, 170, { label = "Border Opacity", min = 0, max = 100, step = 5, unit = "%",
     get = function() local b2 = borderData(); return math.floor(((b2 and b2.alpha) or 1) * 100 + 0.5) end,
     set = function(v) local b2 = ensureBorder(); b2.alpha = v / 100; decor() end }), bOn)
-  add(pg, Color(f, C2, 298, 170, "Border Color", { hasAlpha = true, label = "Bars › Border color",
+  add(pg, Color(f, C2, 286, 170, "Border Color", { hasAlpha = true, label = "Bars › Border color",
     get = function() local b2 = borderData(); return b2 and b2.color end,
     set = function(c) local b2 = ensureBorder(); b2.color = c; decor() end }), bOn)
-  local two = add(pg, Switch(f, C1, 341, 170, "Two-Color Border", OFFON, function() return twoOn() and true or false end,
+  local two = add(pg, Switch(f, C1, 327, 170, "Two-Color Border", OFFON, function() return twoOn() and true or false end,
     function(v)
       local b2 = ensureBorder()
       if v then b2.color2 = b2.color2 or { 1, 1, 1 }; b2.twoTone = nil else b2.twoTone = false end
@@ -1358,23 +1367,23 @@ local function buildDecoPage(parent)
     end), bOn)
   attachTip(two, "Two-color border", "Makes the border a gradient between its color and the second color, along the gradient direction.")
   local function twoLive() return bOn() and twoOn() end
-  add(pg, Color(f, C2, 341, 170, "Second Border Color", { hasAlpha = true, required = true, label = "Bars › Border color 2", title = "Second Border Color",
+  add(pg, Color(f, C2, 327, 170, "Second Border Color", { hasAlpha = true, required = true, label = "Bars › Border color 2", title = "Second Border Color",
     get = function() local b2 = borderData(); return b2 and b2.color2 end,
     set = function(c) local b2 = ensureBorder(); b2.color2 = c; decor() end }), twoLive)
-  add(pg, Switch(f, C1, 384, 170, "Gradient Direction", DIRS,
+  add(pg, Switch(f, C1, 368, 170, "Gradient Direction", DIRS,
     function() local b2 = borderData(); return (b2 and b2.gradDir) or "up" end,
     function(d) local b2 = ensureBorder(); b2.gradDir = d; decor() end), twoLive)
 
   -- ICON TINT
   local function tintOn() return ((GB.db and GB.db.iconTintMode) or "off") ~= "off" end
-  local mode = add(pg, Switch(f, C1, 447, 170, "Colorize Icon", { { "off", "Off" }, { "wash", "Wash" }, { "tint", "Tint" } },
+  local mode = add(pg, Switch(f, C1, 429, 170, "Colorize Icon", { { "off", "Off" }, { "wash", "Wash" }, { "tint", "Tint" } },
     function() return (GB.db and GB.db.iconTintMode) or "off" end,
     function(m) if GB.Skin then GB.Skin:SetIconTintMode(m) end; relook(); C:SetPreviewState("idle") end))
   attachTip(mode, "Colorize icon", "Colors the normal state only, so out-of-range, out-of-mana and unusable still show through. Wash gives one clean color but makes icons harder to tell apart; Tint keeps the art and adds a cast (pale colors work best).")
-  add(pg, Color(f, C2, 447, 170, "Tint Color", { label = "Bars › Icon tint",
+  add(pg, Color(f, C2, 429, 170, "Tint Color", { label = "Bars › Icon tint",
     get = function() return GB.db and GB.db.iconTintColor end,
     set = function(c) if GB.Skin then GB.Skin:SetIconTintColor(c) end; C:SetPreviewState("idle") end }), tintOn)
-  add(pg, Dial(f, C1, 490, 170, { label = "Tint Strength", min = 0, max = 100, step = 5, unit = "%",
+  add(pg, Dial(f, C1, 470, 170, { label = "Tint Strength", min = 0, max = 100, step = 5, unit = "%",
     get = function() local v = GB.db and GB.db.iconTintStrength; return math.floor((v == nil and 1 or v) * 100 + 0.5) end,
     set = function(v) if GB.Skin then GB.Skin:SetIconTintStrength(v / 100) end; C:SetPreviewState("idle") end }), tintOn)
 
@@ -1383,7 +1392,7 @@ local function buildDecoPage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · TEXT (the mock's Panel Contents, 374 tall). ONE set of controls;
+-- SECTION · TEXT (the mock's Panel Contents, 358 tall). ONE set of controls;
 -- Bar Text Type (Keybind · Charge Count · Countdown · Name) decides which text
 -- they edit.
 -- ★ NAME is Off / On like the rest (the owner, 2026-09-25: drop "use Blizzard's"):
@@ -1391,7 +1400,7 @@ end
 -- name text ("default") reads On, and becomes Custom the moment it is edited.
 -- ---------------------------------------------------------------------------
 local function buildTextPage(parent)
-  local pg = Section("text", parent, 374); local f = pg.frame
+  local pg = Section("text", parent, 358); local f = pg.frame
   local function reapply() if GB.Skin then GB.Skin:ReapplyDecor() end end
   local function reCD() if GB.Skin and GB.Skin.RefreshCooldownText then GB.Skin:RefreshCooldownText() end end
   local function ensureNameCustom()
@@ -1429,39 +1438,39 @@ local function buildTextPage(parent)
   local tabs = Switch(f, 0, 0, 360, "Bar Text Type", { { "keybind", "Keybind" }, { "count", "Charge Count" }, { "cdtext", "Countdown" }, { "name", "Name" } },
     function() return tab end, function(v) tab = v; refreshPage(pg) end)
 
-  local head = add(pg, Switch(f, C1, 43, 170, "Custom Text", OFFON, live, function(v) K().setOn(v); refreshPage(pg) end))
+  local head = add(pg, Switch(f, C1, 41, 170, "Custom Text", OFFON, live, function(v) K().setOn(v); refreshPage(pg) end))
   attachTip(head, "Custom text", "Keybind and Charge Count: On restyles Blizzard's text with the settings here. Countdown: shows or hides the cooldown numbers. Name: shows your styled macro name, or none.")
-  add(pg, Drop(f, C2, 43, 170, "Font",
-    function() local o = { { "", "Default" } }; for _, n in ipairs(fontChoices()) do o[#o + 1] = { n, n } end; return o end,
+  add(pg, Drop(f, C2, 41, 170, "Font",
+    function() local o = { { "", "Default" } }; for _, n in ipairs(fontChoices()) do o[#o + 1] = { n, n, font = fontPathOf(n) } end; return o end,
     function() local c = data(); return (c and c.font) or "" end,
     function(v) local c = ensure(); if c then c.font = (v ~= "") and v or nil end; apply() end,
     { fallback = function(cur) return (cur and cur ~= "") and cur or "Default" end }), live)
-  add(pg, Color(f, C1, 86, 170, "Text Color", { label = "Bars › Text color",
+  add(pg, Color(f, C1, 82, 170, "Text Color", { label = "Bars › Text color",
     get = function() local c = data(); return c and c.color end,
     set = function(col) local c = ensure(); if c then c.color = col end; apply() end }), live)
   -- Text Anchor: each text has its own places; Countdown has none (it sits where
   -- the cooldown draws it), so the control dims there.
-  local anchorLbl = Label(f, C2, 86, "Text Anchor")
+  local anchorLbl = Label(f, C2, 82, "Text Anchor")
   local anchors = {}
   for key, k in pairs(KINDS) do
     if k.zones then
-      anchors[key] = Switch(f, C2, 103, 170, nil, k.zones,
+      anchors[key] = Switch(f, C2, 97, 170, nil, k.zones,
         function() local c = k.data(); return (c and c.zone) or k.zoneDefault end,
         function(v) local c = k.ensure(); if c then c.zone = v end; k.apply() end)
     end
   end
-  local cdAnchor = Switch(f, C2, 103, 170, nil, { { "cooldown", "With the Sweep" } }, function() return "cooldown" end, function() end)
-  add(pg, Dial(f, C1, 129, 170, { label = "Font Size", min = 6, max = 30, unit = "px",
+  local cdAnchor = Switch(f, C2, 97, 170, nil, { { "cooldown", "With the Sweep" } }, function() return "cooldown" end, function() end)
+  add(pg, Dial(f, C1, 123, 170, { label = "Font Size", min = 6, max = 30, unit = "px",
     get = function() local c = data(); return (c and c.size) or K().sizeDefault end,
     set = function(v) v = math.max(K().sizeMin, math.min(K().sizeMax, v)); local c = ensure(); if c then c.size = v end; apply() end }), live)
 
   -- The text's own offset, its outline, and Keybind's Mac symbols.
-  add(pg, Dial(f, C1, 192, 170, { label = "Text Horizontal Offset", min = -40, max = 40, unit = "px", get = num("offsetX", 0), set = setNum("offsetX") }), live)
-  add(pg, Switch(f, C2, 192, 170, "Text Outline", { { "", "None" }, { "OUTLINE", "Outline" }, { "THICKOUTLINE", "Thick" } },
+  add(pg, Dial(f, C1, 184, 170, { label = "Text Horizontal Offset", min = -40, max = 40, unit = "px", get = num("offsetX", 0), set = setNum("offsetX") }), live)
+  add(pg, Switch(f, C2, 184, 170, "Text Outline", { { "", "None" }, { "OUTLINE", "Outline" }, { "THICKOUTLINE", "Thick" } },
     function() local c = data(); return (c and c.flags) or "OUTLINE" end,
     function(v) local c = ensure(); if c then c.flags = v end; apply() end), live)
-  add(pg, Dial(f, C1, 235, 170, { label = "Text Vertical Offset", min = -40, max = 40, unit = "px", get = num("offsetY", 0), set = setNum("offsetY") }), live)
-  local mac = add(pg, Switch(f, C2, 235, 170, "Mac Symbol Icons", OFFON,
+  add(pg, Dial(f, C1, 225, 170, { label = "Text Vertical Offset", min = -40, max = 40, unit = "px", get = num("offsetY", 0), set = setNum("offsetY") }), live)
+  local mac = add(pg, Switch(f, C2, 225, 170, "Mac Symbol Icons", OFFON,
     function() local st = GB.db and GB.db.styleData; return (st and st.keybindMods == "symbols") and true or false end,
     function(v)
       local st = GB.db and GB.db.styleData; if st then st.keybindMods = v and "symbols" or "default" end
@@ -1482,15 +1491,15 @@ local function buildTextPage(parent)
     return c.shadow
   end
   local function shLive() return live() and shadowOn() end
-  add(pg, Switch(f, C1, 298, 170, "Text Shadow", OFFON, function() return shadowOn() and true or false end,
+  add(pg, Switch(f, C1, 286, 170, "Text Shadow", OFFON, function() return shadowOn() and true or false end,
     function(v) local sh = ensureShadow(); if sh then sh.enabled = v and true or false end; apply(); refreshPage(pg) end), live)
-  add(pg, Dial(f, C2, 298, 170, { label = "Shadow Offset X", min = -8, max = 8, unit = "px",
+  add(pg, Dial(f, C2, 286, 170, { label = "Shadow Offset X", min = -8, max = 8, unit = "px",
     get = function() local sh = shadow(); return (sh and sh.x) or 1 end,
     set = function(v) local sh = ensureShadow(); if sh then sh.x = v end; apply() end }), shLive)
-  add(pg, Color(f, C1, 341, 170, "Shadow Color", { hasAlpha = true, label = "Bars › Text shadow color",
+  add(pg, Color(f, C1, 327, 170, "Shadow Color", { hasAlpha = true, label = "Bars › Text shadow color",
     get = function() local sh = shadow(); return sh and sh.color end,
     set = function(col) local sh = ensureShadow(); if sh then sh.color = col end; apply() end }), shLive)
-  add(pg, Dial(f, C2, 341, 170, { label = "Shadow Offset Y", min = -8, max = 8, unit = "px",
+  add(pg, Dial(f, C2, 327, 170, { label = "Shadow Offset Y", min = -8, max = 8, unit = "px",
     get = function() local sh = shadow(); return (sh and sh.y) or -1 end,
     set = function(v) local sh = ensureShadow(); if sh then sh.y = v end; apply() end }), shLive)
 
@@ -1507,11 +1516,11 @@ local function buildTextPage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · GLOWS & ANIMATIONS (the mock's Panel Contents, 500 tall)
+-- SECTION · GLOWS & ANIMATIONS (the mock's Panel Contents, 496 tall)
 -- ---------------------------------------------------------------------------
 local ANIM_ORDER = { "proc", "highlight", "cast", "channel", "hover", "selected", "flash", "assist" }
 local function buildGlowsPage(parent)
-  local pg = Section("glows", parent, 500); local f = pg.frame
+  local pg = Section("glows", parent, 496); local f = pg.frame
   local function showPrev(prev) if prev then C:SetPreviewState(prev) end end
 
   -- CUSTOM GLOWS — Pulse Speed across the width, then a TABLE, one line per
@@ -1524,9 +1533,9 @@ local function buildGlowsPage(parent)
     set = function(v) if GB.db then GB.db.glowPulseSpeed = v end end }))
   for i, r in ipairs(GLOW_ROWS) do
     local key, label, prev = r[1], r[2], r[3]
-    local y = 79 + (i - 1) * 24
+    local y = 77 + (i - 1) * 24
     local function on() local t = trig(key); return t and t.enabled ~= false end
-    local lab = UI.gLabel(f, label, 12); lab:SetPoint("TOPRIGHT", f, "TOPLEFT", 53, -(y + 1.5)); lab:SetJustifyH("RIGHT")
+    local lab = UI.gLabel(f, label); lab:SetPoint("TOPRIGHT", f, "TOPLEFT", 53, -(y + 2.5)); lab:SetJustifyH("RIGHT")
     local chk = UI.gCheck(f, nil, function() return on() and true or false end,
       function(v) if GB.Glows then GB.Glows:SetTriggerEnabled(key, v) end; refreshPage(pg); showPrev(prev) end)
     chk:SetPoint("TOPLEFT", 63, -y)
@@ -1550,7 +1559,7 @@ local function buildGlowsPage(parent)
   -- the module's schema so a new module grows its controls here: two to a row
   -- under the type, a choice as a switch, a number as a dial. The preview runs
   -- the state's glow + animation.
-  Title(f, 0, 293, "Custom Animations", 14)
+  Title(f, 0, 291, "Custom Animations", 14)
   local states = {}
   for _, k in ipairs(ANIM_ORDER) do
     for _, tr in ipairs(ANIM_TRIGGERS) do if tr[1] == k then states[#states + 1] = { k, tr[2] } end end
@@ -1559,8 +1568,8 @@ local function buildGlowsPage(parent)
   for i, s in ipairs(states) do if i <= 4 then row1[#row1 + 1] = s else row2[#row2 + 1] = s end end
   local function getS() return animTrigger end
   local function setS(v) animTrigger = v; refreshPage(pg); C:SetPreviewAnim(animTrigger) end
-  local st1 = UI.gSwitch(f, row1, getS, setS, { w = 360 }); st1:SetPoint("TOPLEFT", 0, -329)
-  local st2 = UI.gSwitch(f, row2, getS, setS, { w = 360 }); st2:SetPoint("TOPLEFT", 0, -345)
+  local st1 = UI.gSwitch(f, row1, getS, setS, { w = 360 }); st1:SetPoint("TOPLEFT", 0, -327)
+  local st2 = UI.gSwitch(f, row2, getS, setS, { w = 360 }); st2:SetPoint("TOPLEFT", 0, -343)
   local function apply() C:SetPreviewAnim(animTrigger); if GB.Anims then GB.Anims:Invalidate(animTrigger) end end
   local function currentSel()
     local t = GB.db and GB.db.triggers and GB.db.triggers[animTrigger]
@@ -1581,25 +1590,25 @@ local function buildGlowsPage(parent)
     end) end
     refreshPage(pg); apply()
   end
-  add(pg, Drop(f, C1, 381, 170, "Animation Type",
+  add(pg, Drop(f, C1, 379, 170, "Animation Type",
     function()
       local o = { { "none", "None" } }
       if GB.Anims then GB.Anims:Each(function(mod) o[#o + 1] = { mod.id, mod.label } end) end
       return o
     end, currentSel, selectAnim))
   -- With None, the color spot is there and dimmed.
-  local noneColor = Color(f, C2, 381, 170, "Animation Effect Color", { get = function() return nil end, set = function() end })
+  local noneColor = Color(f, C2, 379, 170, "Animation Effect Color", { get = function() return nil end, set = function() end })
   if GB.Anims then
     GB.Anims:Each(function(mod)
       local blk = CreateFrame("Frame", nil, f); blk:SetPoint("TOPLEFT", 0, 0); blk:SetSize(360, 10); blk:Hide()
       local ctrls, slot = {}, 0
       local hasColor = false
-      local function place() local x = (slot % 2 == 0) and C1 or C2; local y = 424 + math.floor(slot / 2) * 43; slot = slot + 1; return x, y end
+      local function place() local x = (slot % 2 == 0) and C1 or C2; local y = 420 + math.floor(slot / 2) * 41; slot = slot + 1; return x, y end
       for _, param in ipairs(mod.params) do
         local c
         if param.kind == "color" and not hasColor then
           hasColor = true
-          c = Color(blk, C2, 381, 170, "Animation Effect Color", { label = "Bars › Animation › " .. param.label, title = param.label,
+          c = Color(blk, C2, 379, 170, "Animation Effect Color", { label = "Bars › Animation › " .. param.label, title = param.label,
             get = function() return animGet(mod.id, param.key) end,
             set = function(v) animSet(mod.id, param.key, v); apply() end })
         elseif param.kind == "choice" then
@@ -1629,17 +1638,17 @@ local function buildGlowsPage(parent)
         if c then ctrls[#ctrls + 1] = c end
       end
       if not hasColor then
-        local c = Color(blk, C2, 381, 170, "Animation Effect Color", { get = function() return nil end, set = function() end })
+        local c = Color(blk, C2, 379, 170, "Animation Effect Color", { get = function() return nil end, set = function() end })
         c:setEnabled(false)
       end
-      blocks[mod.id] = { frame = blk, ctrls = ctrls, h = 424 + math.ceil(slot / 2) * 43 - 10 }
+      blocks[mod.id] = { frame = blk, ctrls = ctrls, h = 420 + math.ceil(slot / 2) * 41 - 10 }
     end)
   end
   pg.after = function()
     st1:refresh(); st2:refresh()
     local cur = currentSel()
     noneColor:SetShown(cur == "none"); noneColor:setEnabled(false)
-    local h = 414
+    local h = 410
     for id, blk in pairs(blocks) do
       blk.frame:SetShown(id == cur)
       if id == cur then
@@ -1654,10 +1663,10 @@ local function buildGlowsPage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · CASTS & CHANNELS (the mock's Frame 562, 119 tall + Complete Color)
+-- SECTION · CASTS & CHANNELS (the mock's Frame 562, 113 tall + Complete Color)
 -- ---------------------------------------------------------------------------
 local function buildCastsPage(parent)
-  local pg = Section("casts", parent, 162); local f = pg.frame
+  local pg = Section("casts", parent, 154); local f = pg.frame
   local function showCast() C:SetPreviewState("cast") end   -- fill edits animate on the Cast chip
   add(pg, Color(f, C1, 0, 170, "Cast Fill Color", { label = "Bars › Cast fill color", title = "Cast Fill Color",
     get = function() return GB.db and GB.db.castFillColor end,
@@ -1665,19 +1674,19 @@ local function buildCastsPage(parent)
   add(pg, Dial(f, C2, 0, 170, { label = "Opacity", min = 0, max = 100, step = 5, unit = "%",
     get = function() return math.floor(((GB.db and GB.db.castFillAlpha) or 0.55) * 100 + 0.5) end,
     set = function(v) if GB.db then GB.db.castFillAlpha = v / 100 end; showCast() end }))
-  add(pg, Switch(f, 0, 43, 360, "Cast Fill Direction", DIRS,
+  add(pg, Switch(f, 0, 41, 360, "Cast Fill Direction", DIRS,
     function() return (GB.db and GB.db.castDrainDir) or "up" end,
     function(d) if GB.db then GB.db.castDrainDir = d end; showCast() end))
-  add(pg, Color(f, C1, 86, 170, "Interrupted Cast Color", { label = "Bars › Cast interrupt color", title = "Cast Interrupt Color",
+  add(pg, Color(f, C1, 82, 170, "Interrupted Cast Color", { label = "Bars › Cast interrupt color", title = "Cast Interrupt Color",
     get = function() return GB.db and GB.db.castInterruptColor end,
     set = function(c) if GB.db then GB.db.castInterruptColor = c end end }))
-  local sp = add(pg, Dial(f, C2, 86, 170, { label = "Interrupt Animation Speed", min = 0.2, max = 2, step = 0.1, unit = "x",
+  local sp = add(pg, Dial(f, C2, 82, 170, { label = "Interrupt Animation Speed", min = 0.2, max = 2, step = 0.1, unit = "x",
     get = function() return (GB.db and GB.db.castInterruptSpeed) or 0.6 end,
     set = function(v) if GB.db then GB.db.castInterruptSpeed = v end end }))
   attachTip(sp.strip, "Interrupt burst speed", "Changes apply on your next cast. Below 1x slows the interrupt burst.")
   -- ★ Not in the mock (2026-09-27), kept so the setting is not lost: the flash
   -- when a cast completes. Under the rest, in the first column.
-  add(pg, Color(f, C1, 129, 170, "Complete Color", { label = "Bars › Cast complete color", title = "Cast Complete Color",
+  add(pg, Color(f, C1, 123, 170, "Cast Complete Color", { label = "Bars › Cast complete color", title = "Cast Complete Color",
     get = function() return GB.db and GB.db.castCompleteColor end,
     set = function(c) if GB.db then GB.db.castCompleteColor = c end end }))
   pg.onShow = function() C:SetPreviewState("cast") end
@@ -1685,10 +1694,10 @@ local function buildCastsPage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · COOLDOWNS & AVAILABILITY (the mock's Frame 562, 205 tall)
+-- SECTION · COOLDOWNS & AVAILABILITY (the mock's Frame 562, 195 tall)
 -- ---------------------------------------------------------------------------
 local function buildCooldownsPage(parent)
-  local pg = Section("cooldowns", parent, 205); local f = pg.frame
+  local pg = Section("cooldowns", parent, 195); local f = pg.frame
   local function showCD() C:SetPreviewState("cooldown") end
   add(pg, Color(f, C1, 0, 170, "Cooldown Sweep Color", { label = "Bars › Sweep color",
     get = function() return GB.db and GB.db.swipeColor end,
@@ -1696,28 +1705,28 @@ local function buildCooldownsPage(parent)
   add(pg, Dial(f, C2, 0, 170, { label = "Sweep Opacity", min = 0, max = 100, step = 5, unit = "%",
     get = function() return math.floor(((GB.db and GB.db.swipeAlpha) or 0.8) * 100 + 0.5) end,
     set = function(v) if GB.Skin then GB.Skin:SetSwipeAlpha(v / 100) end; showCD() end }))
-  local fl = add(pg, Switch(f, C1, 43, 170, "Cast Finish Flash", OFFON,
+  local fl = add(pg, Switch(f, C1, 41, 170, "Cast Finish Flash", OFFON,
     function() return (GB.db and GB.db.finishFlash) and true or false end,
     function(v) if GB.Skin then GB.Skin:SetFinishFlash(v) end; refreshPage(pg); C:PlayPreviewFlash() end))
   attachTip(fl, "Finish flash", "A shape-matched burst when a cooldown completes.")
-  add(pg, Color(f, C2, 43, 170, "Finish Flash Color", { label = "Bars › Finish flash color",
+  add(pg, Color(f, C2, 41, 170, "Finish Flash Color", { label = "Bars › Finish flash color",
     get = function() return GB.db and GB.db.finishFlashColor end,
     set = function(c) if GB.Skin then GB.Skin:SetFinishFlashColor(c) end; C:PlayPreviewFlash() end }),
     function() return GB.db and GB.db.finishFlash and true or false end)
-  add(pg, Switch(f, C1, 86, 170, "Desaturate Unusable Spells", OFFON,
+  add(pg, Switch(f, C1, 82, 170, "Desaturate Unusable Spells", OFFON,
     function() return (GB.db and GB.db.availDesaturate) and true or false end,
     function(v) if GB.Skin then GB.Skin:SetAvailDesaturate(v) end end))
-  add(pg, Color(f, C1, 129, 170, "Unusable Tint", { label = "Bars › Unusable tint",
+  add(pg, Color(f, C1, 123, 170, "Unusable Tint", { label = "Bars › Unusable tint",
     get = function() return GB.db and GB.db.availUnusable end,
     set = function(c) if GB.Skin then GB.Skin:SetAvailUnusable(c) end end }))
-  add(pg, Color(f, C2, 129, 170, "Out of Mana Tint", { label = "Bars › Out-of-mana tint",
+  add(pg, Color(f, C2, 123, 170, "Out of Mana Tint", { label = "Bars › Out-of-mana tint",
     get = function() return GB.db and GB.db.availOOM end,
     set = function(c) if GB.Skin then GB.Skin:SetAvailOOM(c) end end }))
-  local rt = add(pg, Switch(f, C1, 172, 170, "Tint Out of Range", OFFON,
+  local rt = add(pg, Switch(f, C1, 164, 170, "Tint Out of Range", OFFON,
     function() return (GB.db and GB.db.rangeTint) and true or false end,
     function(v) if GB.Skin then GB.Skin:SetRangeTint(v) end; refreshPage(pg) end))
   attachTip(rt, "Tint out of range", "Tints the icon and recolors the keybind text while the target is out of range.")
-  add(pg, Color(f, C2, 172, 170, "Out of Range Tint", { label = "Bars › Out-of-range color",
+  add(pg, Color(f, C2, 164, 170, "Out of Range Tint", { label = "Bars › Out-of-range color",
     get = function() return GB.db and GB.db.rangeColor end,
     set = function(c) if GB.Skin then GB.Skin:SetRangeColor(c) end end }),
     function() return GB.db and GB.db.rangeTint and true or false end)
@@ -1726,14 +1735,14 @@ local function buildCooldownsPage(parent)
 end
 
 -- ---------------------------------------------------------------------------
--- SECTION · BAR VISIBILITY, LAYOUT & PRESETS (the mock's Frame 570, 427 tall)
+-- SECTION · BAR VISIBILITY, LAYOUT & PRESETS (the mock's Frame 570, 411 tall)
 -- Gloom's Bars owns bar geometry PER BAR, opt-in; Edit Mode keeps any bar left
 -- off. Engine: Layout.lua (containers only — never the secure buttons;
 -- out-of-combat with a combat queue). Settings live per bar in the PROFILE
 -- (barLayout[barKey]), beside the preset assignments.
 -- ---------------------------------------------------------------------------
 local function buildLayoutPage(parent)
-  local pg = Section("layout", parent, 427); local f = pg.frame
+  local pg = Section("layout", parent, 411); local f = pg.frame
 
   -- EMPTY SLOTS (GLOBAL) — every bar; the per-bar Empty Icons below overrides it.
   local function emptyMode() return (GB.db and GB.db.emptySlots) or "normal" end
@@ -1761,7 +1770,7 @@ local function buildLayoutPage(parent)
     end end
     return ""
   end
-  Label(f, 0, 53, "Editing Layout for Bar:")
+  Label(f, 0, 51, "Editing Layout for Bar:")
   local barChoices, widths, nums, fixed = {}, {}, 0, 0
   for _, bar in ipairs(GB.BARS) do
     local n = bar.key:match("^bar(%d+)$")
@@ -1781,7 +1790,7 @@ local function buildLayoutPage(parent)
   end
   local barSw = UI.gSwitch(f, barChoices, function() return selBar end, function(v) selBar = v; refreshPage(pg) end,
     { widths = widths, h = 15, accent = LIME })
-  barSw:SetPoint("TOPLEFT", 0, -70.5)
+  barSw:SetPoint("TOPLEFT", 0, -66.5)
   for i, seg in ipairs(barSw.segs) do
     local bar = GB.BARS[i]
     seg:HookScript("OnEnter", function() if GB.Skin and GB.Skin.PingBar then GB.Skin:PingBar(bar.buttonPrefix, true) end end)
@@ -1789,7 +1798,7 @@ local function buildLayoutPage(parent)
     attachTip(seg, bar.label, "Select this bar to edit its layout. Hovering pulses it on screen.")
   end
 
-  local own = add(pg, Switch(f, C1, 106, 170, "Layout Control", OFFON, function() return layoutOn() and true or false end,
+  local own = add(pg, Switch(f, C1, 102, 170, "Layout Control", OFFON, function() return layoutOn() and true or false end,
     function(v)
       local prof = GB:ActiveProfile(); if prof then prof.layoutEnabled = v and true or false end
       if GB.Layout then GB.Layout:ApplyAll() end
@@ -1806,19 +1815,19 @@ local function buildLayoutPage(parent)
     table.sort(o, function(a2, b2) return a2[2] < b2[2] end)
     return o
   end
-  local sp = add(pg, perLabel(Drop(f, C2, 106, 170, "Style Preset", presetOptions,
+  local sp = add(pg, perLabel(Drop(f, C2, 102, 170, "Style Preset", presetOptions,
     function() local prof = GB:ActiveProfile(); return prof and prof.bars and prof.bars[selBar] end,
     function(v) GB:AssignBarPreset(selBar, v); refreshPage(pg) end), "Style Preset"))
   attachTip(sp, "Style preset", "Which whole-look preset the selected bar wears. The preset being edited renders live as you tweak it; any other preset shows its saved look.")
   local VIS = { { "default", "Default" }, { "show", "Always Visible" }, { "combat", "In Combat" }, { "nocombat", "Out of Combat" }, { "hide", "Hidden" } }
-  local vis = add(pg, perLabel(Drop(f, C1, 149, 170, "Visibility Rule", VIS,
+  local vis = add(pg, perLabel(Drop(f, C1, 143, 170, "Visibility Rule", VIS,
     function() local c = data(); return (c and c.vis) or "default" end,
     function(v) local c = ensureBarLayout(selBar); c.vis = (v ~= "default") and v or nil; apply(); refreshPage(pg) end), "Visibility Rule"), layoutOn)
   attachTip(vis, "Visibility", "Default follows Blizzard's rules (Edit Mode, mouseover, vehicles). Always Visible shows the bar even if Edit Mode has it disabled. In / Out of Combat show it only then. Hidden removes it. Game-driven hides always win.")
   -- EMPTY ICONS — this bar's OVERRIDE of the global Empty Slots: GLOBAL follows
   -- it, SHOW keeps this bar's empties visible, HIDE removes them (Skin.lua's
   -- emptyOverride). nil / true / false in the profile.
-  local ei = add(pg, perLabel(Switch(f, C2, 149, 170, "Empty Icons", { { "global", "Global" }, { "show", "Show" }, { "hide", "Hide" } },
+  local ei = add(pg, perLabel(Switch(f, C2, 143, 170, "Empty Icons", { { "global", "Global" }, { "show", "Show" }, { "hide", "Hide" } },
     function() local c = data(); local v = c and c.showEmpty; return (v == false and "hide") or (v == true and "show") or "global" end,
     function(v)
       local c = ensureBarLayout(selBar)
@@ -1828,37 +1837,37 @@ local function buildLayoutPage(parent)
     end), "Empty Icons"), layoutOn)
   attachTip(ei, "Empty icons", "This bar's override of Empty Slots (Global). Global: follow it. Show: keep this bar's empty slots visible. Hide: they disappear; their spot in the grid stays reserved, and they come back while you drag a spell.")
 
-  local sz = add(pg, perLabel(Dial(f, C1, 192, 170, { label = "Icon Size", min = 24, max = 64, unit = "px",
+  local sz = add(pg, perLabel(Dial(f, C1, 184, 170, { label = "Icon Size", min = 24, max = 64, unit = "px",
     get = function() local c = data(); return (c and c.size) or 45 end,
     set = function(v) local c = ensureBarLayout(selBar); c.size = v; apply() end }), "Icon Size"), layoutOn)
   attachTip(sz.strip, "Icon size", "Scales the WHOLE button proportionally — icon, text, glows — like Edit Mode's size setting. How the icon sits within its button is Icon Scale, saved in the preset.")
-  add(pg, perLabel(Dial(f, C2, 192, 170, { label = "Icon Gap", min = -32, max = 64, unit = "px",
+  add(pg, perLabel(Dial(f, C2, 184, 170, { label = "Icon Gap", min = -32, max = 64, unit = "px",
     get = function() local c = data(); return (c and c.gap) or 4 end,
     set = function(v) local c = ensureBarLayout(selBar); c.gap = v; apply() end }), "Icon Gap"), layoutOn)
-  add(pg, perLabel(Dial(f, C1, 235, 170, { label = "Total Icons", min = 1, max = 12,
+  add(pg, perLabel(Dial(f, C1, 225, 170, { label = "Total Icons", min = 1, max = 12,
     get = function() local c = data(); return (c and c.count) or 12 end,
     set = function(v) local c = ensureBarLayout(selBar); c.count = v; apply() end }), "Total Icons"), layoutOn)
-  add(pg, perLabel(Dial(f, C2, 235, 170, { label = "Rows", min = 1, max = 6,
+  add(pg, perLabel(Dial(f, C2, 225, 170, { label = "Rows", min = 1, max = 6,
     get = function() local c = data(); return (c and c.rows) or 1 end,
     set = function(v) local c = ensureBarLayout(selBar); c.rows = v; apply(); refreshPage(pg) end }), "Rows"), layoutOn)
-  add(pg, perLabel(Dial(f, C1, 278, 170, { label = "Gap Between Rows", min = -32, max = 64, unit = "px",
+  add(pg, perLabel(Dial(f, C1, 266, 170, { label = "Gap Between Rows", min = -32, max = 64, unit = "px",
     get = function() local c = data(); return (c and (c.gapCross or c.gap)) or 4 end,
     set = function(v) local c = ensureBarLayout(selBar); c.gapCross = v; apply() end }), "Gap Between Rows"),
     function() local c = data(); return layoutOn() and ((c and c.rows or 1) > 1) end)
-  add(pg, perLabel(Switch(f, C2, 278, 170, "Orientation", { { true, "Horizontal" }, { false, "Vertical" } },
+  add(pg, perLabel(Switch(f, C2, 266, 170, "Orientation", { { true, "Horizontal" }, { false, "Vertical" } },
     function() local c = data(); return not c or c.horizontal ~= false end,
     function(v) local c = ensureBarLayout(selBar); c.horizontal = v; apply() end), "Orientation"), layoutOn)
 
   -- The master switch, the preset highlight, and copying a layout (three columns).
-  local en = add(pg, Switch(f, T1, 331, 107, "GloomBars Addon", OFFON,
+  local en = add(pg, Switch(f, T1, 317, 107, "GloomBars Addon", OFFON,
     function() return (GB.Skin and GB.Skin.enabled) and true or false end,
     function(v) if not GB.Skin then return end; if v then GB.Skin:Enable() else GB.Skin:Disable() end end))
   attachTip(en, "Gloom's Bars", "The master switch: Off returns every bar to Blizzard's own look and layout.")
-  local hl = add(pg, Switch(f, T2, 331, 106, "Preset Highlight", OFFON,
+  local hl = add(pg, Switch(f, T2, 317, 106, "Preset Highlight", OFFON,
     function() return (GB.Skin and GB.Skin.SetPresetHighlight and GB.Skin:SetPresetHighlight()) and true or false end,
     function(v) if GB.Skin and GB.Skin.SetPresetHighlight then GB.Skin:SetPresetHighlight(v) end end))
   attachTip(hl, "Highlight bars using this preset", "Puts a translucent block behind every bar that wears the preset you're editing, so it's clear which bars your changes affect. Stays on with this window closed and through combat. Off again when you log in.")
-  local cp = add(pg, Drop(f, T3, 331, 107, "Copy Styles From",
+  local cp = add(pg, Drop(f, T3, 317, 107, "Copy Styles From",
     function()
       local o = {}
       for _, bar in ipairs(GB.BARS) do if bar.buttonPrefix ~= selBar then o[#o + 1] = { bar.buttonPrefix, bar.label } end end
@@ -1880,13 +1889,13 @@ local function buildLayoutPage(parent)
   local mv = add(pg, UI.gButton(f, "Move Bars", { w = 107, h = 16, onClick = function()
     if GB.Layout then GB.Layout:SetMoveMode(not GB.Layout:MoveModeOn()) end
   end }), layoutOn)
-  mv:SetPoint("TOPLEFT", T1, -394)
+  mv:SetPoint("TOPLEFT", T1, -378)
   attachTip(mv, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
   local qk = UI.gButton(f, "Quick Keybind", { w = 106, h = 16, onClick = openQuickKeybind })
-  qk:SetPoint("TOPLEFT", T2, -394)
+  qk:SetPoint("TOPLEFT", T2, -378)
   attachTip(qk, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
   local rs = add(pg, UI.gButton(f, "Reset Positions", { w = 107, h = 16, onClick = function() if GB.Layout then GB.Layout:ResetPosition(selBar) end end }), layoutOn)
-  rs:SetPoint("TOPLEFT", T3, -394)
+  rs:SetPoint("TOPLEFT", T3, -378)
   attachTip(rs, "Reset Positions", "Returns the selected bar to wherever Edit Mode places it.")
 
   pg.after = function()
