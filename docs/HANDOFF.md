@@ -52,6 +52,12 @@
 
 ---
 
+## ▶▶▶ 2026-09-30 — the Hub's UNDO covers Bars
+The `undo` block at the end of `Config.lua`'s RegisterTab: a snapshot is a deep copy of every
+`GB.PRESET_FIELDS` key of `GB.db` (the working copy the windows edit); putting one back patches them
+and calls `GB:RefreshAll()`. The token is profile + edit preset, so a preset or profile switch is
+never an undo step. Nothing else in Bars changed.
+
 ## ▶▶▶ 2026-09-27 — the owner's first in-game round on the two-window Bars
 Suite-wide facts are the Hub's (BACKLOG 16, CONTRACTS §2/§4). Here: the Text section's Font list
 draws each name in its own face (`fontPathOf`); Casts & Channels' extra color is labelled **"Cast

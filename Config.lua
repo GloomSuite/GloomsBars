@@ -2158,4 +2158,26 @@ GloomsHub:RegisterTab{
     if GB.Layout and GB.Layout:MoveModeOn() then GB.Layout:SetMoveMode(false) end
   end,
   refresh  = function() C:Refresh() end,
+  -- UNDO (the Hub's Undo.lua, 2026-09-30): the working copy — every preset
+  -- field of GB.db (GB.PRESET_FIELDS), what these windows edit; a switch of
+  -- profile or preset is not a step
+  undo     = {
+    snapshot = function()
+      local t = {}
+      for _, k in ipairs(GB.PRESET_FIELDS) do t[k] = GloomsHub.UndoCopy(GB.db[k]) end
+      return t
+    end,
+    restore  = function(snap)
+      for _, k in ipairs(GB.PRESET_FIELDS) do
+        local v = snap[k]
+        if type(v) == "table" and type(GB.db[k]) == "table" then GloomsHub:UndoPatch(GB.db[k], v)
+        else GB.db[k] = GloomsHub.UndoCopy(v) end
+      end
+      GB:RefreshAll()
+    end,
+    token    = function()
+      local prof, name = GB:ActiveProfile()
+      return tostring(name) .. "/" .. tostring(prof and prof.edit)
+    end,
+  },
 }
