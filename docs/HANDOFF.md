@@ -52,6 +52,14 @@
 
 ---
 
+## ▶▶▶ 2026-09-30 (evening) — the spacebar as "_", and the two SLANT shapes
+- **The spacebar shows as `_`** in keybind text (`spaceAsUnderscore` beside `symbolizeHotkey` in
+  `Skin.lua`): only the KEY after the modifiers, only when it is the spacebar, with Custom keybind on —
+  plain or with the Mac symbols. Owner-confirmed.
+- **`slant-r` / `slant-l`** are the Hub's (Hub CONTRACTS §7). Here: `hgAnchor` passes the shape key to
+  `GloomsHub:GrowAnchor` (a slant grows `growX` × more sideways), the BORDER's colour fill is widened by
+  the same factor, and flyouts map both to `square` (`FLYOUT_1X1`). The even-border fix is untested in game.
+
 ## ▶▶▶ 2026-09-30 — the Hub's UNDO covers Bars
 The `undo` block at the end of `Config.lua`'s RegisterTab: a snapshot is a deep copy of every
 `GB.PRESET_FIELDS` key of `GB.db` (the working copy the windows edit); putting one back patches them

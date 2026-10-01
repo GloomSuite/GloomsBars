@@ -325,6 +325,7 @@ local FLYOUT_1X1 = {
   pill32 = "circle", pill21 = "circle",
   square32 = "square", square21 = "square",
   square32w = "square", square21w = "square",
+  ["slant-r"] = "square", ["slant-l"] = "square",   -- no 1:1 slant (2026-09-30)
   ["roundsq1-32"] = "roundsq1", ["roundsq1-21"] = "roundsq1",
   ["roundsq2-32"] = "roundsq2", ["roundsq2-21"] = "roundsq2",
   ["roundsq3-32"] = "roundsq3", ["roundsq3-21"] = "roundsq3",
@@ -400,7 +401,7 @@ end
 -- was untouched while "GB looks identical" was being proven; with that banked, the
 -- copy is gone and every shaped glow and effect in the suite grows from ONE function.
 local function hgAnchor(tex, icon, grow)
-  return GloomsHub:GrowAnchor(tex, icon, grow)
+  return GloomsHub:GrowAnchor(tex, icon, grow, handKey())   -- the key: a slant grows more sideways (Hub `growX`)
 end
 
 -- Anchor a mask over the whole construction (padding-compensated per axis). `ext`
@@ -890,11 +891,30 @@ local function hotkeyEnabled()
 end
 -- Rewrite a button's CURRENT hotkey text if the style opts in. Idempotent: once
 -- rewritten the text leads with "|T", so the [scam]- match no longer fires.
+-- ★ THE SPACEBAR AS "_" (2026-09-30, the owner: "spacebar" in a keybind is too
+-- long). Only the KEY after the modifiers, and only when it IS the spacebar —
+-- whatever the client calls it ("Spacebar", "Space", "Spc"…). With Custom
+-- keybind on; plain or with the Mac symbols. Idempotent: "_" never matches again.
+local SPACE_NAMES = { spacebar = true, space = true, spc = true, sp = true, ["space bar"] = true }
+local function spaceAsUnderscore(text)
+  -- the key starts after the last modifier: a "-" (s-, c-…) or an icon's "|t"
+  local cut = 0
+  for i = 1, #text do
+    if text:sub(i, i) == "-" then cut = i elseif text:sub(i, i + 1) == "|t" then cut = i + 1 end
+  end
+  local mods, key = text:sub(1, cut), text:sub(cut + 1)
+  if SPACE_NAMES[key:lower():match("^%s*(.-)%s*$")] then return mods .. "_" end
+  return text
+end
 local function symbolizeButton(btn)
   local hk = btn.HotKey
-  if not hk or not hotkeyEnabled() or (style().keybindMods) ~= "symbols" then return end
+  if not hk or not hotkeyEnabled() then return end
   local raw = hk:GetText()
-  if raw and raw:match("^[scam]%-") then hk:SetText(symbolizeHotkey(raw)) end
+  if not raw or raw == "" then return end
+  local out = raw
+  if (style().keybindMods) == "symbols" and out:match("^[scam]%-") then out = symbolizeHotkey(out) end
+  out = spaceAsUnderscore(out)
+  if out ~= raw then hk:SetText(out) end
 end
 
 -- Text shadow (session 14). The shadow is a SEPARATE property SetFont never
@@ -1299,8 +1319,10 @@ local function ApplyDecor(btn)
     b.tex:SetDrawLayer("BACKGROUND", math.max(-8, (isub or 0) - 1))   -- just behind the icon
     applyBorderColor(b.tex, bd)   -- two-tone gradient or flat colour (shared with the glow recolour)
     b.tex:ClearAllPoints()
-    b.tex:SetPoint("TOPLEFT", shapeRef, "TOPLEFT", -t, t + mExtT)      -- frames the masked region (plateRect in plate mode)
-    b.tex:SetPoint("BOTTOMRIGHT", shapeRef, "BOTTOMRIGHT", t, -(mExtB + t))
+    -- (a slanted shape's mask reaches growX x t sideways — the colour must too)
+    local tx = t * ((handKey() and GloomsHub:ShapeInfo(handKey()).growX) or 1)
+    b.tex:SetPoint("TOPLEFT", shapeRef, "TOPLEFT", -tx, t + mExtT)      -- frames the masked region (plateRect in plate mode)
+    b.tex:SetPoint("BOTTOMRIGHT", shapeRef, "BOTTOMRIGHT", tx, -(mExtB + t))
     -- Same shape source as the icon; rebuild only on a shape/plan change (source
     -- swaps never re-render, §2) — thickness/size are a live re-anchor.
     if b.mask and b.maskKey == maskKey then
