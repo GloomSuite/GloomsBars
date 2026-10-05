@@ -1975,6 +1975,19 @@ local function handIconSize(btn)
   else return short, short end
 end
 
+-- The construction's drawn W/H for `btn`, in the button's own units (its bar's
+-- preset + shape override applied), or nil when no hand shape is skinning it.
+-- Layout spaces buttons by this: a wide or tall silhouette is drawn past the
+-- button's square, so a step of button + gap made gap 0 overlap (the owner,
+-- 2026-10-01). A plate's construction is the same w x 2w, so it needs no case.
+function Skin:DrawnSize(btn)
+  if not (self.enabled and records[btn]) then return nil end
+  local prevP, prevS = self:EnterButtonCtx(btn)
+  local w, h = handIconSize(btn)
+  self:LeaveButtonCtx(prevP, prevS)
+  return w, h
+end
+
 -- Extend the button's CLICKABLE area to match a non-square construction (session
 -- 14). We reshape the icon texture but Blizzard leaves the secure button's hit
 -- rect square, so on a tall shape (2:1 pill) the icon's top/bottom tips weren't
@@ -2188,6 +2201,7 @@ function Skin:RefreshPlate()
   GB:ForEachButton(refreshIconGeometry)
   if GB.Glows then GB.Glows:RefreshShape(); GB.Glows:RefreshSize() end
   self:RefreshPlateDim()   -- plate off/side flip → clear or re-sync the dim proxies
+  if GB.Layout then GB.Layout:ApplyAll() end   -- the drawn size sets the bar spacing
 end
 
 -- Live icon resize (legacy free-size path; a hand shape overrides these dims in
@@ -2209,6 +2223,7 @@ function Skin:SetHandShape(key)
   if not self.enabled then return end
   GB:ForEachButton(refreshIconGeometry)
   if GB.Glows then GB.Glows:RefreshShape(); GB.Glows:RefreshSize() end
+  if GB.Layout then GB.Layout:ApplyAll() end   -- the drawn size sets the bar spacing
 end
 
 -- Live uniform size scale (× the Edit-Mode button size). The hand shape keeps its
@@ -2218,6 +2233,7 @@ function Skin:SetSizeScale(v)
   if not self.enabled then return end
   GB:ForEachButton(refreshIconGeometry)
   if GB.Glows then GB.Glows:RefreshSize() end
+  if GB.Layout then GB.Layout:ApplyAll() end   -- the drawn size sets the bar spacing
 end
 
 local function ApplyButton(btn, bar)
@@ -2550,6 +2566,15 @@ styleCooldownText = withPresetCtx(styleCooldownText)
 symbolizeButton   = withPresetCtx(symbolizeButton)
 styleCast         = withPresetCtx(styleCast)
 refreshDimProxy   = withPresetCtx(refreshDimProxy)
+-- ★ The text overrides and the cast inner glow are re-applied straight from
+-- Blizzard's UpdateCount / UpdateHotkeys / PlaySpellCastAnim post-hooks, outside
+-- any ctx — so a bar on its OWN preset got the WORKING COPY's settings the
+-- moment a charge changed (owner-reported 2026-10-01: a charge count set to
+-- Center −25,15 on one bar jumped to the edit preset's corner spot; TESTED with
+-- an in-game readout of Count's anchor before and after).
+ApplyCountOverride  = withPresetCtx(ApplyCountOverride)
+ApplyHotkeyOverride = withPresetCtx(ApplyHotkeyOverride)
+StyleCastInnerGlow  = withPresetCtx(StyleCastInnerGlow)
 ApplyDecor        = withPresetCtx(ApplyDecor)
 ApplyButton       = withPresetCtx(ApplyButton)
 -- ★ It calls applyTexCoord directly, and applyTexCoord takes only the ICON — so it

@@ -8,6 +8,23 @@
 > status, contracts) — point at the Hub. Every time that rule was broken, the copy went stale
 > within a day.
 >
+> ## ▶▶▶ 2026-10-01 → 04 — SPACING, ICONS, PRESET CONTEXT, QUICK KEYBIND
+> - **Layout spaces buttons by what's DRAWN** (`applyBar`): each slot is `pw × ph` from
+>   `Skin:DrawnSize(btn)` (the hand shape's W/H in the button's own preset ctx; never less than the
+>   button), so gap 0 = edge to edge for wide / tall shapes and Icon Size > 1. The container is centred
+>   in its slot; the bounding box uses the slots. SetHandShape / SetSizeScale / RefreshPlate re-run
+>   `Layout:ApplyAll`. ⚠ `local w, h = a and b and f()` truncated `h` once here — write the `if`.
+> - **Custom icons survive EVERY re-set** (`Icons:HookButton`): a `hooksecurefunc(icon, "SetTexture")`
+>   re-applies the override (a guard stops re-entry) — leaving stealth re-set the art by a path the
+>   Update / UpdateButtonArt hooks never saw. Icon IDs: the file's last segment is the SPELL ID (the
+>   number in Wowhead's URL), never the icon's file ID.
+> - **Preset context on Blizzard's refresh hooks:** `ApplyCountOverride`, `ApplyHotkeyOverride` and
+>   `StyleCastInnerGlow` are `withPresetCtx`-wrapped — called bare from the UpdateCount / UpdateHotkeys /
+>   PlaySpellCastAnim hooks they read the WORKING COPY's settings (a bar on its own preset had its charge
+>   count jump to the edit preset's spot; TESTED with an in-game anchor readout).
+> - **Quick Keybind** wears the Suite window body (`UI.gRounded`, title at 20,-20, the kit's buttons /
+>   checkbox) and closes BOTH Suite windows (`GloomsSuiteWindows` + the old `GloomsSuiteWindow`).
+>
 > ## ▶▶▶ 2026-09-27 — BARS IS NOW TWO WINDOWS (the end of `Config.lua`, "THE TWO-WINDOW DESIGN")
 > Suite-wide: Hub BACKLOG 16 · CONTRACTS §2/§4 · FINDINGS §22. Bars detail only:
 > - The **selector** is the PREVIEW window (`buildPreviewPane(content)`; `container` = it): chips from

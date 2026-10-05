@@ -132,6 +132,24 @@ function Icons:HookButton(btn)
   if not btn or btn.gbIconHooked then return end
   btn.gbIconHooked = true
   btn:HookScript("OnEnter", function(b) Icons.lastHovered = b end)
+  -- ★ CATCH EVERY RE-SET, not just the ones we know about (2026-10-01, the
+  -- owner: a custom rogue icon reverted to Blizzard's after going into stealth
+  -- and back out). The Update / UpdateButtonArt hooks in Skin.lua re-apply after
+  -- the two refreshes we knew of; leaving stealth re-sets the icon by some other
+  -- path. Hooking the texture itself answers every path, known or not. The
+  -- guard stops our own SetTexture from re-entering.
+  local icon = btn.icon or btn.Icon
+  if icon and icon.SetTexture then
+    local busy = false
+    hooksecurefunc(icon, "SetTexture", function()
+      if busy or not (GB.Skin and GB.Skin.enabled) then return end
+      local path = Icons:PathFor(btn)
+      if not path then return end
+      busy = true
+      icon:SetTexture(path)
+      busy = false
+    end)
+  end
 end
 
 --------------------------------------------------------------------------------

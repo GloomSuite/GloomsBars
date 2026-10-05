@@ -293,7 +293,19 @@ local function applyBar(barKey)
       cont:SetScale(scale)
       -- A collapsed empty KEEPS its grid slot (a hole, not a shuffle) so the
       -- other buttons never move as slots fill and empty.
-      if inGrid then shown[#shown + 1] = { cont = cont, scale = scale, px = px } end
+      -- The step covers what's DRAWN, not just the square button: a wide or tall
+      -- silhouette (or a size scale over 1) draws past it, so gap 0 used to
+      -- overlap (the owner, 2026-10-01). Never less than the button, which stays
+      -- the clickable minimum. pw / ph = the slot's on-screen width / height.
+      local pw, ph = px, px
+      local dw, dh   -- (not `a and b and f()`: an `and` keeps only f's FIRST return)
+      if GB.Skin and GB.Skin.DrawnSize then dw, dh = GB.Skin:DrawnSize(btn) end
+      local bw = btn:GetWidth()
+      if dw and dh and bw and bw > 0 then
+        pw = px * math.max(1, dw / bw)
+        ph = px * math.max(1, dh / bw)
+      end
+      if inGrid then shown[#shown + 1] = { cont = cont, scale = scale, px = px, pw = pw, ph = ph } end
     end
   end
   for idx, e in ipairs(shown) do
@@ -302,10 +314,16 @@ local function applyBar(barKey)
     -- Gaps may be NEGATIVE (the owner: hex/circle silhouettes don't fill their
     -- square rects — overlap the frames so the shapes nestle). Clamp the step
     -- so extreme size+overlap combos can never stack buttons on one spot.
-    local stepMain = math.max(e.px + gap, 4)
-    local stepCross = math.max(e.px + gapCross, 4)
-    if horizontal then e.x, e.y = minor * stepMain, -major * stepCross
-    else e.x, e.y = major * stepCross, -minor * stepMain end
+    -- (sx, sy) = the slot's top-left, the size of what's drawn; the container
+    -- (px square, the drawing centred on it) is placed so the two centres meet.
+    if horizontal then
+      e.sx = minor * math.max(e.pw + gap, 4)
+      e.sy = -major * math.max(e.ph + gapCross, 4)
+    else
+      e.sx = major * math.max(e.pw + gapCross, 4)
+      e.sy = -minor * math.max(e.ph + gap, 4)
+    end
+    e.x, e.y = e.sx + (e.pw - e.px) / 2, e.sy - (e.ph - e.px) / 2
   end
   if positioned then
     -- The grid's own bounding box, so we can centre it on the saved position.
@@ -313,8 +331,8 @@ local function applyBar(barKey)
     -- only the thing we hang off it changes, from the frame to the buttons.
     local maxX, minY = 0, 0
     for _, e in ipairs(shown) do
-      if e.x + e.px > maxX then maxX = e.x + e.px end
-      if e.y - e.px < minY then minY = e.y - e.px end
+      if e.sx + e.pw > maxX then maxX = e.sx + e.pw end
+      if e.sy - e.ph < minY then minY = e.sy - e.ph end
     end
     local left, top = c.posX - maxX / 2, c.posY + (-minY) / 2
     -- Keep the FRAME over its own buttons. Nothing hangs off it any more, but

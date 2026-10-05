@@ -235,6 +235,9 @@ end
 -- Shared by the Bar-layout section button and the footer button. Every styled
 -- region is guarded: if a patch renames a piece it keeps its stock look.
 local qkFromUs = false
+-- ★ In the TWO-WINDOW kit since 2026-10-04 (the owner: it was the last old-
+-- style window the Bars tool opens): a Suite window's rounded body and title,
+-- Sansation, the kit's outlined buttons and checkbox.
 local function flatifyBlizzButton(b)
   if not b or b.gbStyled then return end
   b.gbStyled = true
@@ -248,57 +251,56 @@ local function flatifyBlizzButton(b)
   end
   local fill = b:CreateTexture(nil, "BACKGROUND")
   fill:SetAllPoints()
-  fill:SetColorTexture(COLOR.heroic.r, COLOR.heroic.g, COLOR.heroic.b, 1)
-  fill:SetAlpha(0.5)
-  b:HookScript("OnEnter", function() fill:SetAlpha(0.8) end)
-  b:HookScript("OnLeave", function() fill:SetAlpha(0.5) end)
+  fill:SetColorTexture(COLOR.violet.r, COLOR.violet.g, COLOR.violet.b, 1)
+  fill:SetAlpha(0)
+  UI.gOutline(b, COLOR.violet)
+  b:HookScript("OnEnter", function() fill:SetAlpha(0.25) end)
+  b:HookScript("OnLeave", function() fill:SetAlpha(0) end)
   local fs = b.GetFontString and b:GetFontString()
-  if fs then setFont(fs, FONT.bodyM, 12); fs:SetTextColor(1, 1, 1) end
+  if fs then setFont(fs, FONT.sa, 10); fs:SetTextColor(COLOR.lilac.r, COLOR.lilac.g, COLOR.lilac.b) end
 end
 local function styleQuickKeybind()
   local f = QuickKeybindFrame
   if not f or f.gbStyled then return end
   f.gbStyled = true
   if f.BG then f.BG:SetAlpha(0) end         -- their dialog border + fill
-  skinPlate(f)
-  addEdges(f, COLOR.rim, 1)
+  -- the Suite windows' body (UI.gWindow's): a rounded panel shading from black
+  -- at the top to the panel colour, re-placed as Blizzard sizes the frame
+  local bg = UI.gRounded(f, { top = { 0, 0, 0, 1 }, bottom = { COLOR.panel.r, COLOR.panel.g, COLOR.panel.b, 1 }, layer = "BACKGROUND", sub = -8 })
+  local function repaint() bg:Place(0, 0, f:GetWidth() or 0, f:GetHeight() or 0) end
+  f:HookScript("OnSizeChanged", repaint); f:HookScript("OnShow", repaint); repaint()
   if f.Header then
     f.Header:SetAlpha(0)                    -- their gold header art (text included)
-    local title = f:CreateFontString(nil, "OVERLAY")
-    setFont(title, FONT.title, 18)
-    title:SetTextColor(COLOR.purple.r, COLOR.purple.g, COLOR.purple.b)
-    title:SetPoint("TOP", 0, -14)
-    title:SetText((f.Header.Text and f.Header.Text:GetText()) or "Quick Keybind Mode")
+    local title = UI.gTitle(f, (f.Header.Text and f.Header.Text:GetText()) or "Quick Keybind Mode", 14)
+    title:SetPoint("TOPLEFT", 20, -20)      -- where every Suite window's title sits
   end
   for _, key in ipairs({ "InstructionText", "CancelDescriptionText", "OutputText" }) do
     local fs = f[key]
-    if fs and fs.SetFont then setFont(fs, FONT.body, 13) end   -- faces only; OutputText's colour is Blizzard's live status
+    if fs and fs.SetFont then setFont(fs, FONT.sa, 11) end   -- faces only; OutputText's colour is Blizzard's live status
   end
   flatifyBlizzButton(f.OkayButton)
   flatifyBlizzButton(f.CancelButton)
   flatifyBlizzButton(f.DefaultsButton)
-  -- Character-specific checkbox: GloomsAuras's flatCheck look (20px box, 10%
-  -- white fill, orange checkmark — same asset, copied to GB media), applied
-  -- over Blizzard's CheckButton so its bindings mechanics stay theirs.
+  -- Character-specific checkbox: the kit's (UI.gCheck's look — a 16px violet
+  -- box, its tick) over Blizzard's CheckButton, so its bindings mechanics stay theirs.
   local cb = f.UseCharacterBindingsButton
   if cb then
     for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetCheckedTexture", "GetDisabledCheckedTexture" }) do
       local tex = cb[get] and cb[get](cb)
       if tex then tex:SetAlpha(0) end
     end
-    local box = cb:CreateTexture(nil, "ARTWORK")
-    box:SetSize(20, 20); box:SetPoint("CENTER")
-    box:SetColorTexture(1, 1, 1, 0.10)
-    local mark = cb:CreateTexture(nil, "OVERLAY")
-    mark:SetSize(20, 20); mark:SetPoint("CENTER")
-    mark:SetTexture(GB.MEDIA .. "ui\\checkmark.png")
-    mark:SetVertexColor(COLOR.orange.r, COLOR.orange.g, COLOR.orange.b, 1)
+    local holder = CreateFrame("Frame", nil, cb); holder:SetSize(16, 16); holder:SetPoint("CENTER")
+    local box = holder:CreateTexture(nil, "ARTWORK"); box:SetAllPoints()
+    box:SetColorTexture(COLOR.violet.r, COLOR.violet.g, COLOR.violet.b, 0.1)
+    UI.gOutline(holder, COLOR.violet)
+    local mark = holder:CreateTexture(nil, "OVERLAY")
+    mark:SetAllPoints(); mark:SetTexture(UI.G_CHECK)
     local function sync() mark:SetShown(cb:GetChecked()) end
     cb:HookScript("OnClick", sync)
     cb:HookScript("OnShow", sync)
     sync()
     local cbText = cb.Text or cb.text
-    if cbText and cbText.SetFont then setFont(cbText, FONT.body, 12) end
+    if cbText and cbText.SetFont then setFont(cbText, FONT.sa, 11) end
   end
 end
 local function openQuickKeybind()
@@ -306,8 +308,12 @@ local function openQuickKeybind()
   if GB.Layout and GB.Layout.MoveModeOn and GB.Layout:MoveModeOn() then GB.Layout:SetMoveMode(false) end
   -- Close the Suite window (the editor is its Bars tab now) so the quick-bind
   -- flow has the screen. GloomsSuiteWindow is the shell's named frame.
-  local suite = _G.GloomsSuiteWindow
-  if suite and suite:IsShown() then suite:Hide() end
+  -- (both: the two-window Suite is GloomsSuiteWindows; the old single window
+  -- GloomsSuiteWindow still serves tools not yet rebuilt)
+  for _, n in ipairs({ "GloomsSuiteWindows", "GloomsSuiteWindow" }) do
+    local suite = _G[n]
+    if suite and suite:IsShown() then suite:Hide() end
+  end
   local f = QuickKeybindFrame
   if not f then GB.msg("Quick keybind isn't available in this client."); return end
   if not f.gbHideHooked then
