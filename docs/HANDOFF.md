@@ -69,6 +69,17 @@
 
 ---
 
+## ▶▶▶ 2026-10-05 — ROW OFFSET and HIDE WHEN MOUNTED (both owner-confirmed)
+- **Row Offset** (`barLayout[barKey].rowOffset`, Bar Layout page beside Gap Between Rows): row n slides
+  (n-1) × offset along the flow — a slant's lean carries down the rows; a vertical bar's columns slide
+  down. `applyBar` re-normalises the grid to (0,0) after the shift (a negative offset can push a slot
+  left of the first). Copy Styles From copies it. (Hub BACKLOG 23, closed.)
+- **Hide When Mounted** (`barLayout[barKey].hideMounted`): mounts + druid travel forms (`[form:N]` from
+  the spell IDs, rebuilt on UPDATE_SHAPESHIFT_FORMS). On In / Out of Combat it folds into the visibility
+  driver; on Default / Always Visible a SECURE handler (`gbMountHandler`) only HIDES and re-shows what
+  it hid, so Blizzard's own rules stand. ★ Its states are WORDS — a "1" arrives as a number (Hub
+  FINDINGS §29). `/gb mountprobe` (kept, the owner) traces it.
+
 ## ▶▶▶ 2026-09-30 (evening) — the spacebar as "_", and the two SLANT shapes
 - **The spacebar shows as `_`** in keybind text (`spaceAsUnderscore` beside `symbolizeHotkey` in
   `Skin.lua`): only the KEY after the modifiers, only when it is the spacebar, with Custom keybind on —

@@ -69,6 +69,7 @@ watcher:RegisterEvent("UPDATE_VEHICLE_ACTIONBAR")
 watcher:RegisterEvent("UPDATE_POSSESS_BAR")
 watcher:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
 watcher:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+watcher:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")  -- a form learned/lost moves the travel form's [form:N] (Hide When Mounted)
 watcher:RegisterEvent("PLAYER_ENTERING_WORLD")   -- zone/instance change re-lays the bars
 -- Edit Mode (the owner: bars set to "Hidden" reappeared after exiting Edit Mode).
 -- Entering Edit Mode SHOWS every bar so you can arrange them; on exit Blizzard
@@ -152,6 +153,112 @@ end
 -- moving the BAR FRAME cannot drag it into view.
 local PARK_X, PARK_Y = -10000, -10000
 
+-- HIDE WHEN MOUNTED (the owner, 2026-10-04): c.hideMounted. "Mounted" = a real
+-- mount OR a druid's travel-type form (the owner: those count). A form has no
+-- macro condition of its own, only its INDEX ([form:N]) — which depends on which
+-- forms the character knows — so the clause is rebuilt from the spell IDs every
+-- out-of-combat apply (UPDATE_SHAPESHIFT_FORMS re-applies).
+local TRAVEL_FORMS = { [783] = true, [165962] = true, [210053] = true, [33943] = true, [40120] = true }
+local function mountedCond()
+  local s = "[mounted]"
+  local n = (GetNumShapeshiftForms and GetNumShapeshiftForms()) or 0
+  for i = 1, n do
+    local spellID = select(4, GetShapeshiftFormInfo(i))
+    if spellID and TRAVEL_FORMS[spellID] then s = s .. "[form:" .. i .. "]" end
+  end
+  return s
+end
+
+-- On a bar whose OWN visibility we don't drive (Default / Always Visible), the
+-- mount rule can't be a visibility driver — "show" would override Blizzard's
+-- rules (Edit Mode's In Combat, a disabled bar, vehicles). So a secure handler
+-- only HIDES on mounting, remembers that it did, and on dismounting re-shows
+-- only what it hid. Runs in the secure environment, so it works in combat too.
+local function mountHandler(barFrame)
+  local h = barFrame.gbMountHandler
+  if not h then
+    h = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+    h:SetFrameRef("bar", barFrame)
+    h:SetAttribute("_onstate-gbmount", [[
+      local bar = self:GetFrameRef("bar")
+      if newstate == "mounted" then
+        if bar:IsShown() then self:SetAttribute("gbhid", true); bar:Hide() end
+      elseif self:GetAttribute("gbhid") then
+        self:SetAttribute("gbhid", nil); bar:Show()
+      end
+    ]])
+    barFrame.gbMountHandler = h
+    -- Blizzard's own UpdateVisibility (zone-in, settings) can re-show the bar
+    -- while you're still mounted; out of combat, put it back.
+    if barFrame.UpdateVisibility then
+      hooksecurefunc(barFrame, "UpdateVisibility", function(bar)
+        local hh = bar.gbMountHandler
+        if hh and hh.gbOn and not InCombatLockdown() and hh:GetAttribute("state-gbmount") == "mounted" and bar:IsShown() then
+          hh:SetAttribute("gbhid", true); (bar.HideBase or bar.Hide)(bar)
+        end
+      end)
+    end
+  end
+  return h
+end
+local function setMountHandler(barFrame, cond)
+  local h = barFrame.gbMountHandler
+  if cond then
+    h = mountHandler(barFrame)
+    if h.gbOn ~= cond then
+      -- ★ WORDS, not "1"/"0": the state driver hands a number-like value over as a
+      -- NUMBER (1 ~= "1"), which silently skipped the hide (2026-10-04, TESTED).
+      RegisterStateDriver(h, "gbmount", cond .. " mounted; walking")
+      h.gbOn = cond
+    end
+  elseif h and h.gbOn then
+    UnregisterStateDriver(h, "gbmount")
+    h.gbOn = nil
+    if h:GetAttribute("gbhid") then
+      h:SetAttribute("gbhid", nil)
+      if barFrame.UpdateVisibility then pcall(barFrame.UpdateVisibility, barFrame) end
+    end
+  end
+end
+Layout.setMountHandler = setMountHandler
+
+-- DIAGNOSTIC (2026-10-04, Hide When Mounted not hiding): `/gb mountprobe` —
+-- for 20 s, prints every mount-state change on bar 2's handler and a short
+-- stack for every time bar 2 is SHOWN, so we can see what re-shows it.
+local probeUntil = 0
+function Layout:MountProbe()
+  local bar = _G.MultiBarBottomLeft
+  if not bar then GB.msg("no MultiBarBottomLeft"); return end
+  probeUntil = GetTime() + 20
+  if not bar.gbProbeHooked then
+    bar.gbProbeHooked = true
+    bar:HookScript("OnShow", function()
+      if GetTime() > probeUntil then return end
+      local st = debugstack(2, 12, 0) or ""
+      local out = {}
+      for line in st:gmatch("[^\n]+") do
+        local f, n = line:match("([%w_]+%.lua)[^:%d]*:(%d+)")
+        if f then out[#out + 1] = f .. ":" .. n end
+      end
+      print("|cffff8800[probe] SHOWN|r", table.concat(out, " < "))
+    end)
+    bar:HookScript("OnHide", function()
+      if GetTime() <= probeUntil then print("|cffff8800[probe] hidden|r") end
+    end)
+  end
+  local h = bar.gbMountHandler
+  if h and not h.gbProbeHooked then
+    h.gbProbeHooked = true
+    h:HookScript("OnAttributeChanged", function(_, name, value)
+      if GetTime() <= probeUntil and (name == "state-gbmount" or name == "gbhid") then
+        print("|cffff8800[probe]|r", name, "=", tostring(value))
+      end
+    end)
+  end
+  print("|cffff8800[probe]|r armed 20s. handler:", h and "yes" or "NONE", "driver:", h and tostring(h.gbOn) or "-",
+    "state:", h and tostring(h:GetAttribute("state-gbmount")) or "-", "shown:", tostring(bar:IsShown()))
+end
+
 local function applyBar(barKey)
   if not layoutOn() then return end
   local c = conf(barKey) or {}   -- an unconfigured bar lays out with the defaults
@@ -170,13 +277,18 @@ local function applyBar(barKey)
   -- "can't show it again" bug). ShowBase/HideBase are what Blizzard's own
   -- UpdateVisibility uses.
   local vis = c.vis
+  local mcond = c.hideMounted and vis ~= "hide" and mountedCond() or nil
   if vis == "combat" or vis == "nocombat" then
-    if barFrame.gbVisDriver ~= vis then
-      RegisterStateDriver(barFrame, "visibility",
-        vis == "combat" and "[combat] show; hide" or "[nocombat] show; hide")
-      barFrame.gbVisDriver = vis
+    setMountHandler(barFrame, nil)
+    -- The mount rule folds straight into the combat driver: mounted wins.
+    local drv = (mcond and (mcond .. " hide; ") or "")
+      .. (vis == "combat" and "[combat] show; hide" or "[nocombat] show; hide")
+    if barFrame.gbVisDriver ~= drv then
+      RegisterStateDriver(barFrame, "visibility", drv)
+      barFrame.gbVisDriver = drv
     end
   else
+    setMountHandler(barFrame, mcond)
     if barFrame.gbVisDriver then
       UnregisterStateDriver(barFrame, "visibility")
       barFrame.gbVisDriver = nil
@@ -189,7 +301,11 @@ local function applyBar(barKey)
                -- frame, which fought the hide (the owner: "Hidden" bars showed as empty
                -- grid outlines, worst under ACTIONBAR_SHOWGRID).
     elseif vis == "show" and barFrame.isShownExternal ~= false then
-      if not barFrame:IsShown() then (barFrame.ShowBase or barFrame.Show)(barFrame) end
+      local h = barFrame.gbMountHandler
+      if mcond and h and h:GetAttribute("state-gbmount") == "mounted" then
+        -- mounted: leave it hidden, but let dismounting bring it back
+        if barFrame:IsShown() then h:SetAttribute("gbhid", true); (barFrame.HideBase or barFrame.Hide)(barFrame) end
+      elseif not barFrame:IsShown() then (barFrame.ShowBase or barFrame.Show)(barFrame) end
     end
   end
   -- Position override (phase L3): c.posX/posY = the bar's CENTER in UIParent
@@ -222,6 +338,11 @@ local function applyBar(barKey)
   local gap = c.gap or 4              -- between adjacent buttons, along the bar's flow
   local gapCross = c.gapCross or gap  -- between rows (columns on a vertical bar); defaults to gap
   local horizontal = c.horizontal ~= false
+  -- Row offset (the owner, 2026-10-04): each row after the first slides along
+  -- the bar's flow by this much MORE than the one above it (row n by (n-1) x
+  -- offset), so a slanted silhouette's lean carries on down the rows instead of
+  -- resetting. Columns on a vertical bar slide down (positive) / up (negative).
+  local rowOffset = c.rowOffset or 0
   local stride = math.ceil(count / rows)
   local shown = {}
   for i = 1, maxN do
@@ -323,6 +444,18 @@ local function applyBar(barKey)
       e.sx = major * math.max(e.pw + gapCross, 4)
       e.sy = -minor * math.max(e.ph + gap, 4)
     end
+    if horizontal then e.sx = e.sx + major * rowOffset else e.sy = e.sy - major * rowOffset end
+  end
+  -- A row offset can push a slot left of / above the first one; shift the grid
+  -- so its top-left is (0, 0) again — the bounding box and both anchor branches
+  -- below assume it starts there.
+  local minX, maxY = 0, 0
+  for _, e in ipairs(shown) do
+    if e.sx < minX then minX = e.sx end
+    if e.sy > maxY then maxY = e.sy end
+  end
+  for _, e in ipairs(shown) do
+    e.sx, e.sy = e.sx - minX, e.sy - maxY
     e.x, e.y = e.sx + (e.pw - e.px) / 2, e.sy - (e.ph - e.px) / 2
   end
   if positioned then
@@ -403,6 +536,7 @@ local function releaseBar(barKey)
     UnregisterStateDriver(barFrame, "visibility")
     barFrame.gbVisDriver = nil
   end
+  setMountHandler(barFrame, nil)   -- and any Hide When Mounted handler
   barFrame.oldGridSettings = nil   -- invalidate ShouldUpdateGrid's cache
   if barFrame.UpdateShownButtons then pcall(barFrame.UpdateShownButtons, barFrame) end
   if barFrame.UpdateGridLayout then pcall(barFrame.UpdateGridLayout, barFrame) end

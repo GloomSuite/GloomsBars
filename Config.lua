@@ -1748,7 +1748,7 @@ end
 -- (barLayout[barKey]), beside the preset assignments.
 -- ---------------------------------------------------------------------------
 local function buildLayoutPage(parent)
-  local pg = Section("layout", parent, 411); local f = pg.frame
+  local pg = Section("layout", parent, 452); local f = pg.frame
 
   -- EMPTY SLOTS (GLOBAL) — every bar; the per-bar Empty Icons below overrides it.
   local function emptyMode() return (GB.db and GB.db.emptySlots) or "normal" end
@@ -1863,17 +1863,27 @@ local function buildLayoutPage(parent)
   add(pg, perLabel(Switch(f, C2, 266, 170, "Orientation", { { true, "Horizontal" }, { false, "Vertical" } },
     function() local c = data(); return not c or c.horizontal ~= false end,
     function(v) local c = ensureBarLayout(selBar); c.horizontal = v; apply() end), "Orientation"), layoutOn)
+  local ro = add(pg, perLabel(Dial(f, C1, 307, 170, { label = "Row Offset", min = -64, max = 64, unit = "px",
+    get = function() local c = data(); return (c and c.rowOffset) or 0 end,
+    set = function(v) local c = ensureBarLayout(selBar); c.rowOffset = (v ~= 0) and v or nil; apply() end }), "Row Offset"),
+    function() local c = data(); return layoutOn() and ((c and c.rows or 1) > 1) end)
+  attachTip(ro.strip, "Row offset", "Slides each row sideways by this much more than the row above it (row 3 moves twice as far as row 2), so a slanted shape's lean carries on down the bar. Negative goes left. On a vertical bar it slides each column down (up if negative).")
+  local hm = add(pg, perLabel(Switch(f, C2, 307, 170, "Hide When Mounted", OFFON,
+    function() local c = data(); return (c and c.hideMounted) and true or false end,
+    function(v) local c = ensureBarLayout(selBar); c.hideMounted = v or nil; apply() end), "Hide When Mounted"),
+    function() local c = data(); return layoutOn() and not (c and c.vis == "hide") end)
+  attachTip(hm, "Hide when mounted", "On: the bar hides while you're on a mount or in a druid's Travel or Flight Form, whatever the Visibility Rule says, and comes back when you get off. Works in combat too.")
 
   -- The master switch, the preset highlight, and copying a layout (three columns).
-  local en = add(pg, Switch(f, T1, 317, 107, "GloomBars Addon", OFFON,
+  local en = add(pg, Switch(f, T1, 358, 107, "GloomBars Addon", OFFON,
     function() return (GB.Skin and GB.Skin.enabled) and true or false end,
     function(v) if not GB.Skin then return end; if v then GB.Skin:Enable() else GB.Skin:Disable() end end))
   attachTip(en, "Gloom's Bars", "The master switch: Off returns every bar to Blizzard's own look and layout.")
-  local hl = add(pg, Switch(f, T2, 317, 106, "Preset Highlight", OFFON,
+  local hl = add(pg, Switch(f, T2, 358, 106, "Preset Highlight", OFFON,
     function() return (GB.Skin and GB.Skin.SetPresetHighlight and GB.Skin:SetPresetHighlight()) and true or false end,
     function(v) if GB.Skin and GB.Skin.SetPresetHighlight then GB.Skin:SetPresetHighlight(v) end end))
   attachTip(hl, "Highlight bars using this preset", "Puts a translucent block behind every bar that wears the preset you're editing, so it's clear which bars your changes affect. Stays on with this window closed and through combat. Off again when you log in.")
-  local cp = add(pg, Drop(f, T3, 317, 107, "Copy Styles From",
+  local cp = add(pg, Drop(f, T3, 358, 107, "Copy Styles From",
     function()
       local o = {}
       for _, bar in ipairs(GB.BARS) do if bar.buttonPrefix ~= selBar then o[#o + 1] = { bar.buttonPrefix, bar.label } end end
@@ -1884,10 +1894,10 @@ local function buildLayoutPage(parent)
       local src = barLayoutData(v); if not src then return end
       local dst = ensureBarLayout(selBar); if not dst then return end
       dst.size, dst.gap, dst.rows = src.size, src.gap, src.rows
-      dst.gapCross, dst.horizontal = src.gapCross, src.horizontal
+      dst.gapCross, dst.horizontal, dst.rowOffset = src.gapCross, src.horizontal, src.rowOffset
       apply(); refreshPage(pg)
     end), layoutOn)
-  attachTip(cp, "Copy layout", "Copies the picked bar's arrangement — button size, gap, rows, row gap, orientation — onto the selected bar. Its position, visibility, button count and empty-slot settings stay as they are.")
+  attachTip(cp, "Copy layout", "Copies the picked bar's arrangement — button size, gap, rows, row gap, row offset, orientation — onto the selected bar. Its position, visibility, button count and empty-slot settings stay as they are.")
 
   -- The buttons: MOVE BARS · QUICK KEYBIND · RESET POSITIONS (the owner's labels,
   -- 2026-09-25), stretched to the three columns. Move names the NEXT action
@@ -1895,13 +1905,13 @@ local function buildLayoutPage(parent)
   local mv = add(pg, UI.gButton(f, "Move Bars", { w = 107, h = 16, onClick = function()
     if GB.Layout then GB.Layout:SetMoveMode(not GB.Layout:MoveModeOn()) end
   end }), layoutOn)
-  mv:SetPoint("TOPLEFT", T1, -378)
+  mv:SetPoint("TOPLEFT", T1, -419)
   attachTip(mv, "Move Bars", "Drag any bar's overlay to reposition it. Click an overlay to select it, then nudge with the arrow keys — hold Shift for 10px steps. ESC or this button exits. Out of combat only.")
   local qk = UI.gButton(f, "Quick Keybind", { w = 106, h = 16, onClick = openQuickKeybind })
-  qk:SetPoint("TOPLEFT", T2, -378)
+  qk:SetPoint("TOPLEFT", T2, -419)
   attachTip(qk, "Quick Keybind", "Opens Blizzard's Quick Keybind mode: hover any action button and press a key to bind it, ESC when done. Out of combat only.")
   local rs = add(pg, UI.gButton(f, "Reset Positions", { w = 107, h = 16, onClick = function() if GB.Layout then GB.Layout:ResetPosition(selBar) end end }), layoutOn)
-  rs:SetPoint("TOPLEFT", T3, -378)
+  rs:SetPoint("TOPLEFT", T3, -419)
   attachTip(rs, "Reset Positions", "Returns the selected bar to wherever Edit Mode places it.")
 
   pg.after = function()

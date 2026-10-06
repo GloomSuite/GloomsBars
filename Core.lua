@@ -1362,6 +1362,8 @@ SlashCmdList.GLOOMSBARS = function(input)
     BorderInfo()
   elseif cmd == "hunt" then
     ArmHunt()
+  elseif cmd == "mountprobe" then
+    GB.Layout:MountProbe()
   elseif cmd == "skin" then
     GB.Skin:Toggle()
   elseif cmd == "sweep" then
